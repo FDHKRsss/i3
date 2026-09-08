@@ -1,3 +1,43 @@
+# Node
+node_modules
+dist
+dist-ssr
+server-dist
+*.local
+*.tsbuildinfo
+
+# Build/version artifacts
+src/version.txt
+
+# Runtime data (kept in docker volumes, not in git)
+uploads/
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Python leftovers (original workspace tooling)
 __pycache__/
 *.py[cod]
 .venv/
@@ -5,8 +45,4 @@ venv/
 env/
 *.egg-info/
 .pytest_cache/
-.env
-.env.*
-!.env.example
-*.log
-.DS_Store
+purgatory/

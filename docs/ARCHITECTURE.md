@@ -75,8 +75,20 @@ Browser ──HTTP──> app (Express, port 8080 in container)
 ├─ docker-compose.yml       # app + db, named volumes, env-configurable port
 ├─ .env.example             # APP_PORT, DATABASE_URL, GEO_PROVIDER, ...
 ├─ package.json             # single root package (frontend + server deps)
-└─ docs/                    # this plan + architecture
+└─ docs/                    # PLAN + ARCHITECTURE + RUNBOOK (compose flow)
 ```
+
+## Verification & runbook
+
+- `docs/RUNBOOK.md` is the compose runbook: it verifies `docker compose up`
+  end-to-end on a plain Unix box (build, health, capture→submit→geocode→
+  persist→list, volume persistence across `down`/`up`, and a clean `down -v`
+  reset).
+- Because Docker is not available in this dev workspace, `tests/runbook.spec.ts`
+  pins the runbook's concrete facts (env defaults, compose wiring, schema, served
+  title, upload dir, expected API outputs) to the real source so the doc cannot
+  silently drift from the implementation. The rest of the behavior is validated
+  by `npm test` + `npm run typecheck`.
 
 ## Database schema (`db/init.sql`)
 

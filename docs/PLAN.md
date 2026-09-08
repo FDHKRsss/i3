@@ -75,5 +75,9 @@ Pass 2 = replace each stub with the real implementation.
   `src/` frontend with mocked camera/audio/GPS (`src/capture/`), `db/init.sql`
   schema, `docker-compose.yml`, multi-stage `Dockerfile`, and the full test suite
   (`tests/` + `*.spec.ts(x)`).
+- `docs/RUNBOOK.md` documents the full `docker compose up` flow (build, health,
+  capture→submit→geocode→persist→list, volume persistence, teardown), and
+  `tests/runbook.spec.ts` pins the runbook's concrete claims to the real source
+  so they cannot drift.
 - All milestones M1–M6 (stub and real passes) are complete; the suite is green
-  (`npm test` + `npm run typecheck`, 34 tests passing).
+  (`npm test` + `npm run typecheck`, 43 tests passing across 10 files).

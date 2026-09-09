@@ -13,9 +13,8 @@ _Recurring walls/gotchas and how to get past them. One bullet each._
   tree. Verify against the working tree (the runner's `N passed`, or `grep -c '^\\s*it('` /
   `^\\s*test(`), NOT `git show HEAD`: a reviewer read HEAD (`43`) as "matching" while the
   runner/working tree had `46`.
-- Review roles need materials to act: a critic invoked bare returned `approved: false` with a
-  `No task/goal, plan, or actor output` blocking issue (not a real verdict). When handing off to any
-  reviewer, always include the goal, `docs/PLAN.md`, and the last actor's output.
-- Reviewer verdicts must be a single strict-JSON object (`approved`, `blocking_issues`,
-  `cosmetic_issues`, `notes`); prose or a `notes`-only reply surfaces downstream as
-  `Could not parse the critic's verdict as JSON`, which is not a real verdict.
+- Critic verdicts are unreliable — even when handed the goal, `docs/PLAN.md`, and the prior actor's
+  output, the critic can still emit a non-verdict (`approved:false` with `Could not parse the
+  critic's verdict as JSON`, `No task/goal, plan, or actor output`, or `need more steps`). Treat any
+  reply that is not a single strict-JSON `{approved, blocking_issues, cosmetic_issues, notes}` object
+  as "not reviewed"; always include the goal + plan + last actor output when invoking a reviewer.

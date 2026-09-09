@@ -81,6 +81,19 @@ describe("Express app (HTTP layer)", () => {
     expect(res.headers.get("x-powered-by")).toBeNull();
   });
 
+  it("serves the built frontend at / and falls back to index.html for SPA routes", async () => {
+    const root = await fetch(`${baseUrl}/`);
+    expect(root.status).toBe(200);
+    const rootHtml = await root.text();
+    expect(rootHtml).toContain('<div id="app"></div>');
+    expect(rootHtml).toContain('<title>Civil42</title>');
+
+    // Unknown client-side routes must fall back to the SPA shell, not 404.
+    const spaRoute = await fetch(`${baseUrl}/some/client/route`);
+    expect(spaRoute.status).toBe(200);
+    expect(await spaRoute.text()).toContain('<div id="app"></div>');
+  });
+
   it("GET /api/reports returns rows and clamps an oversized limit to 100", async () => {
     vi.mocked(listReports).mockResolvedValueOnce([
       { id: "1", created_at: new Date() },
@@ -127,6 +140,11 @@ describe("Express app (HTTP layer)", () => {
     vi.mocked(listReports).mockClear();
     await fetch(`${baseUrl}/api/reports?limit=0`);
     expect(listReports).toHaveBeenCalledWith(1);
+  });
+
+  it("falls back to the default limit when limit is not a number", async () => {
+    await fetch(`${baseUrl}/api/reports?limit=abc`);
+    expect(listReports).toHaveBeenCalledWith(50);
   });
 
   it("GET /api/reports returns 503 when the database is unavailable", async () => {

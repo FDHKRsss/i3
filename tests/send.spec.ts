@@ -8,7 +8,7 @@ describe("send (frontend multipart submission)", () => {
   });
 
   it("posts voice, image and GPS as multipart and returns the server text", async () => {
-    const fetchMock = vi.fn(
+    const fetchMock = vi.fn<typeof fetch>(
       async () => new Response("Report received successfully", { status: 200 })
     );
     vi.stubGlobal("fetch", fetchMock);
@@ -43,7 +43,9 @@ describe("send (frontend multipart submission)", () => {
   });
 
   it("uses the .webm filename for non-WAV audio and surfaces HTTP errors", async () => {
-    const fetchMock = vi.fn(async () => new Response("Bad request", { status: 400 }));
+    const fetchMock = vi.fn<typeof fetch>(
+      async () => new Response("Bad request", { status: 400 })
+    );
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await send({

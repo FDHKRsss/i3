@@ -61,7 +61,7 @@ Browser ──HTTP──> app (Express, port 8080 in container)
 │  │  ├─ MockCamera.tsx      # canvas that draws a placeholder photo
 │  │  ├─ useMockAudio.ts     # synthesizes a WAV blob (no mic)
 │  │  └─ location.ts         # mock GPS default {lat, lon}
-│  ├─ send.ts               # multipart POST to /api/report
+│  ├─ send.tsx              # multipart POST to /api/report
 │  └─ ...                   # css, tests
 ├─ server/                  # backend (TypeScript, compiled to server-dist/)
 │  ├─ index.ts              # Express app, routes, static serving, listen(PORT)
@@ -75,6 +75,8 @@ Browser ──HTTP──> app (Express, port 8080 in container)
 ├─ docker-compose.yml       # app + db, named volumes, env-configurable port
 ├─ .env.example             # APP_PORT, DATABASE_URL, GEO_PROVIDER, ...
 ├─ package.json             # single root package (frontend + server deps)
+├─ tsconfig.test.json       # typechecks tests/** (separate from app build)
+├─ tests/                   # vitest suites: app/report/send/geo/store/runbook/pipeline
 └─ docs/                    # PLAN + ARCHITECTURE + RUNBOOK (compose flow)
 ```
 
@@ -87,8 +89,12 @@ Browser ──HTTP──> app (Express, port 8080 in container)
 - Because Docker is not available in this dev workspace, `tests/runbook.spec.ts`
   pins the runbook's concrete facts (env defaults, compose wiring, schema, served
   title, upload dir, expected API outputs) to the real source so the doc cannot
-  silently drift from the implementation. The rest of the behavior is validated
-  by `npm test` + `npm run typecheck`.
+  silently drift from the implementation.
+- `npm test` runs a `pretest` (`npm run build:frontend`), so a fresh clone has a
+  `dist/` for the SPA-serving specs; `npm run typecheck` also typechecks
+  `tests/**` via `tsconfig.test.json`, and `tests/pipeline.spec.ts` pins that
+  wiring so it cannot be silently dropped. The rest of the behavior is validated
+  by `npm test` + `npm run typecheck` (currently 49 tests across 11 files).
 
 ## Database schema (`db/init.sql`)
 

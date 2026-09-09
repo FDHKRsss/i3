@@ -9,3 +9,7 @@ _Recurring walls/gotchas and how to get past them. One bullet each._
 - `npm test` prints `Error: db down` to stderr; this is EXPECTED — the two negative-path specs mock
   `listReports`/`insertReport` rejection (GET `/api/reports` → `503`, POST `/api/report` → `500`).
   Exit code 0 + all tests passing means the suite is green, not broken.
+- Doc test-count claims are pinned to the **committed** tree, but `npm test` runs the **working**
+  tree. Verify against the working tree (the runner's `N passed`, or `grep -c '^\\s*it('` /
+  `^\\s*test(`), NOT `git show HEAD`: a reviewer read HEAD (`43`) as "matching" while the
+  runner/working tree had `46`.

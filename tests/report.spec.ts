@@ -184,6 +184,20 @@ describe("handleReport", () => {
     );
   });
 
+  it("skips reverse-geocoding when only latitude is provided", async () => {
+    const { body, boundary } = buildMultipart({ lat: "52.2297" }, [voice]);
+    const res = makeResponse();
+
+    await dispatch(makeRequest(body, boundary), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toBe("Report received successfully");
+    expect(whatIsAtLocation).not.toHaveBeenCalled();
+    expect(vi.mocked(insertReport)).toHaveBeenCalledWith(
+      expect.objectContaining({ lat: 52.2297, lon: null, geoDesc: "" })
+    );
+  });
+
   it("persists a valid report with voice + image + coordinates", async () => {
     const { body, boundary } = buildMultipart(
       { lat: "52.2297", lon: "21.0122" },

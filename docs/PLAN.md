@@ -68,6 +68,8 @@ Pass 2 = replace each stub with the real implementation.
 - [x] M6 -- stub   Tests stub: placeholder vitest/supertest smoke + a docs/RUNBOOK placeholder.
 - [x] M6 -- real   Tests real: backend validation + geo-mock unit tests, frontend render smoke test, and a runbook verifying `docker compose up` end-to-end.
 
+- [x] M7 -- real   Fresh-clone robustness (no stub phase): `npm test` now runs a `pretest` (`npm run build:frontend`) so the SPA-serving specs have a `dist/` even on a clean checkout; `npm run typecheck` also typechecks `tests/**` via a new `tsconfig.test.json`; `tests/pipeline.spec.ts` pins that wiring; extra specs cover the SPA fallback, non-numeric `limit`, and lat-only geocode skip.
+
 ## Current status
 
 - Source fetched and copied into the workspace (read-only clone; no remote added).
@@ -79,5 +81,5 @@ Pass 2 = replace each stub with the real implementation.
   capture→submit→geocode→persist→list, volume persistence, teardown), and
   `tests/runbook.spec.ts` pins the runbook's concrete claims to the real source
   so they cannot drift.
-- All milestones M1–M6 (stub and real passes) are complete; the suite is green
-  (`npm test` + `npm run typecheck`, 43 tests passing across 10 files).
+- All milestones M1–M7 are complete (M7 has no separate stub phase); the suite is
+  green (`npm test` + `npm run typecheck`, 49 tests passing across 11 files).

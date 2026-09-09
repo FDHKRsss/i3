@@ -13,3 +13,6 @@ _Recurring walls/gotchas and how to get past them. One bullet each._
   tree. Verify against the working tree (the runner's `N passed`, or `grep -c '^\\s*it('` /
   `^\\s*test(`), NOT `git show HEAD`: a reviewer read HEAD (`43`) as "matching" while the
   runner/working tree had `46`.
+- Review roles need materials to act: a critic invoked bare returned `approved: false` with a
+  `No task/goal, plan, or actor output` blocking issue (not a real verdict). When handing off to any
+  reviewer, always include the goal, `docs/PLAN.md`, and the last actor's output.

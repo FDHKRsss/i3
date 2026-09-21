@@ -3,14 +3,25 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { NewReport } from "./NewReport.tsx";
 
 /**
- * M8 -- real wizard shell. The milestone ships the step indicator and the
- * back/next navigation; these tests pin the structure (4-step `<ol>`,
- * `aria-current="step"` tracking) and the navigation behavior, which are the
- * wizard's actual contract for the later camera/location/description/review
- * milestones to fill in.
+ * M8 -- real wizard shell + M9 -- stub camera step. The milestone ships the
+ * step indicator, the back/next navigation, and the camera step that gates
+ * progression until a placeholder photo is captured. These tests pin the
+ * structure (4-step `<ol>`, `aria-current="step"` tracking), the navigation
+ * behavior, and the camera-step capture/retake/gating contract — not exact
+ * copy strings, so later milestones can change the copy freely.
  */
 
 afterEach(cleanup);
+
+/** The camera step's mock viewfinder renders a single `<canvas>`; clicking it
+ * captures a placeholder photo + thumbnail and gates navigation. */
+function capturePhoto(container: HTMLElement): void {
+  const canvas = container.querySelector("canvas");
+  if (!canvas) {
+    throw new Error("expected the mock camera <canvas> to be rendered");
+  }
+  fireEvent.click(canvas);
+}
 
 describe("NewReport wizard shell", () => {
   it("renders the wizard heading and a 4-step ordered indicator", () => {
@@ -46,11 +57,20 @@ describe("NewReport wizard shell", () => {
   });
 
   it("advances through all four steps, moving aria-current and hiding next on the last step", () => {
-    render(<NewReport />);
+    const { container } = render(<NewReport />);
 
     expect(
       screen.getByRole("heading", { name: "Krok 1 z 4: Aparat" })
     ).toBeTruthy();
+
+    // M9: the camera step gates progression until a photo is captured.
+    expect(
+      screen.getByRole("button", { name: "Dalej" }).hasAttribute("disabled")
+    ).toBe(true);
+    capturePhoto(container);
+    expect(
+      screen.getByRole("button", { name: "Dalej" }).hasAttribute("disabled")
+    ).toBe(false);
 
     fireEvent.click(screen.getByRole("button", { name: "Dalej" }));
     expect(
@@ -77,8 +97,9 @@ describe("NewReport wizard shell", () => {
   });
 
   it("moves back one step with 'Wstecz'", () => {
-    render(<NewReport />);
+    const { container } = render(<NewReport />);
 
+    capturePhoto(container);
     fireEvent.click(screen.getByRole("button", { name: "Dalej" }));
     expect(
       screen.getByRole("heading", { name: "Krok 2 z 4: Lokalizacja" })
@@ -96,5 +117,79 @@ describe("NewReport wizard shell", () => {
     expect(
       screen.getByRole("link", { name: "Anuluj" }).getAttribute("href")
     ).toBe("#/");
+  });
+});
+
+describe("NewReport camera step (M9 -- stub)", () => {
+  it("renders the mock viewfinder and gates 'Dalej'/'Zrób ponownie' until capture", () => {
+    const { container } = render(<NewReport />);
+
+    expect(container.querySelector("canvas")).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Dalej" }).hasAttribute("disabled")
+    ).toBe(true);
+    expect(
+      screen
+        .getByRole("button", { name: "Zrób ponownie" })
+        .hasAttribute("disabled")
+    ).toBe(true);
+  });
+
+  it("capturing swaps the viewfinder for a saved status and enables both actions", () => {
+    const { container } = render(<NewReport />);
+
+    capturePhoto(container);
+
+    // The viewfinder is replaced by a success note, and the actions unlock.
+    expect(container.querySelector("canvas")).toBeNull();
+    expect(screen.getByRole("status").textContent).toMatch(/zapisane/i);
+    expect(
+      screen.getByRole("button", { name: "Dalej" }).hasAttribute("disabled")
+    ).toBe(false);
+    expect(
+      screen
+        .getByRole("button", { name: "Zrób ponownie" })
+        .hasAttribute("disabled")
+    ).toBe(false);
+  });
+
+  it("'Zrób ponownie' returns to the viewfinder and gates progression again", () => {
+    const { container } = render(<NewReport />);
+
+    capturePhoto(container);
+    fireEvent.click(screen.getByRole("button", { name: "Zrób ponownie" }));
+
+    expect(container.querySelector("canvas")).not.toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Dalej" }).hasAttribute("disabled")
+    ).toBe(true);
+    expect(
+      screen
+        .getByRole("button", { name: "Zrób ponownie" })
+        .hasAttribute("disabled")
+    ).toBe(true);
+  });
+
+  it("keeps the captured photo when navigating back from a later step", () => {
+    const { container } = render(<NewReport />);
+
+    capturePhoto(container);
+    fireEvent.click(screen.getByRole("button", { name: "Dalej" }));
+    expect(
+      screen.getByRole("heading", { name: "Krok 2 z 4: Lokalizacja" })
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Wstecz" }));
+    expect(
+      screen.getByRole("heading", { name: "Krok 1 z 4: Aparat" })
+    ).toBeTruthy();
+    // The captured state survives the round-trip: still "saved", still able to
+    // continue without re-taking the photo.
+    expect(container.querySelector("canvas")).toBeNull();
+    expect(screen.getByRole("status").textContent).toMatch(/zapisane/i);
+    expect(
+      screen.getByRole("button", { name: "Dalej" }).hasAttribute("disabled")
+    ).toBe(false);
   });
 });

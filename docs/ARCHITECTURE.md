@@ -42,7 +42,15 @@ Key decisions vs. the previous seed:
   page with loading / error / empty / ready states. Covered by
   `src/app.spec.tsx`, `src/pages/NewReport.spec.tsx`,
   `src/pages/Reports.spec.tsx`.
-- **M9–M15 — not implemented yet.** Camera, location + map/pin, description
+- **M9 (Camera step) — stub done.** The wizard's camera step reuses the canvas
+  `MockCamera` and, on capture, pushes a placeholder photo + thumbnail JPEG
+  Blob pair into the wizard state via `src/capture/image.ts`
+  (`makePlaceholderImages()`). "Dalej" is gated until a photo is captured,
+  "Zrób ponownie" resets the capture, and navigating back preserves it. The
+  real `getUserMedia` camera + canvas downscale/compress (M9 -- real) is still
+  pending. Covered by `src/pages/NewReport.spec.tsx` and
+  `src/capture/image.spec.ts`.
+- **M10–M15 — not implemented yet.** Location + map/pin, description
   generation, review/submit, full reports-list rows, the `BYTEA`-backed DB/API,
   and the final compose/tests/docs pass remain open (stubs first, then real).
 

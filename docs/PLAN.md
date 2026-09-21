@@ -102,7 +102,7 @@ Pass 2 = replace each stub with the real implementation.
 - [x] M8 -- stub   **Home & navigation shell.** Hash mini-router (`#/`, `#/new`, `#/reports`); Home renders the numbered step list and the two buttons ("Report issue" → `#/new`, "Zgłoszenia" → `#/reports`); wizard and reports are placeholders.
 - [x] M8 -- real   Real copy (PL), wired navigation, step indicator in the wizard, reports page shell with empty/error states. No placeholder text left.
 
-- [ ] M9 -- stub   **Camera step.** Reuse the canvas mock to push a placeholder photo + thumbnail Blob into the wizard state; "Retake"/"Continue" buttons.
+- [x] M9 -- stub   **Camera step.** Reuse the canvas mock to push a placeholder photo + thumbnail Blob into the wizard state; "Retake"/"Continue" buttons.
 - [ ] M9 -- real   **Camera step.** Real `getUserMedia({video:{facingMode:'environment'}})` live preview + shutter; canvas downscale → compressed JPEG (≤1280 px) + thumbnail (≤360 px); permission/error fallback to the mock; stop tracks on unmount.
 
 - [ ] M10 -- stub  **Location step.** Mock GPS + grey placeholder map with a pin; two-column layout (coordinates | map).
@@ -126,15 +126,20 @@ Pass 2 = replace each stub with the real implementation.
 ## Current status
 
 - The previous seed (M1–M7) is complete and green; it is the baseline we evolve.
-- **This turn**: **M8 -- real is implemented and green** — Home renders real
-  Polish copy + the numbered 4-step list + "Report issue" / "Zgłoszenia" links;
-  the wizard renders a 4-step indicator with `aria-current` tracking and working
-  back/next navigation; the Reports page renders loading / error / empty / ready
-  states from `GET /api/reports`. `npm test` (67 passed) and
-  `npm run typecheck` are green, so **M8 is now fully complete (stub + real)**.
-- Next: **M9 -- stub** — wire the existing canvas mock into the camera step so
-  the wizard advances with a placeholder photo + thumbnail Blob, then continue
-  the remaining Pass 1 stubs (M10–M15).
+- **M8 (stub + real) — done.** Home renders real Polish copy + the numbered
+  4-step list + "Report issue" / "Zgłoszenia" links; the wizard renders a
+  4-step indicator with `aria-current` tracking and working back/next
+  navigation; the Reports page renders loading / error / empty / ready states
+  from `GET /api/reports`.
+- **M9 -- stub — done (this turn).** The camera step reuses the canvas
+  `MockCamera` and, on capture, pushes a placeholder photo + thumbnail JPEG
+  Blob pair (`makePlaceholderImages()`) into the wizard state. "Dalej" is gated
+  until a photo is captured and "Zrób ponownie" resets the capture; navigating
+  back keeps the captured photo. `npm test` (73 passed) and
+  `npm run typecheck` are green.
+- Next: **M10 -- stub** — mock GPS + grey placeholder map with a pin and the
+  two-column coordinates | map layout, then continue the remaining Pass 1
+  stubs (M11–M15).
 - Review signal at the end of Pass 1 will be `STUBS_DONE`; when M15 -- real is
   green the signal is `ALL_MILESTONES_DONE`.
 

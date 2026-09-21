@@ -155,6 +155,38 @@
     flex: 1 1 0;
 }
 
+/* Camera step (M9 -- stub) */
+
+.camera-step {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.camera-step__viewfinder {
+    position: relative;
+    width: 100%;
+    height: clamp(260px, 55vh, 440px);
+    overflow: hidden;
+    border-radius: 12px;
+    background: #0f172a;
+}
+
+/* MockCamera is a full-viewport (100vw × 100vh) surface by design; embed it in
+   the wizard's viewfinder by forcing its root to fill this container instead. */
+.camera-step__viewfinder > div {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+.camera-step__captured {
+    margin: 0;
+    padding: 16px;
+    border-radius: 8px;
+    background: #dcfce7;
+    color: #14532d;
+}
+
 /* Reports (M8 -- real shell) */
 
 .reports__header {

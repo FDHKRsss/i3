@@ -1,5 +1,10 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import "../app.css";
+import { MockCamera } from "../capture/MockCamera.tsx";
+import {
+  makePlaceholderImages,
+  type CapturedImages,
+} from "../capture/image.ts";
 
 const STEPS = [
   { id: "camera", label: "Aparat" },
@@ -18,16 +23,35 @@ const STEP_HINT: Record<StepId, string> = {
 };
 
 /**
- * Report wizard (M8 -- real shell). A step indicator drives the four-step flow
- * camera → location → description → review with real Polish copy and
- * next/back navigation. Each step's body is filled in by M9–M12; this
- * milestone delivers the navigation + step indicator so the wizard is a real
- * skeleton, not a placeholder.
+ * Report wizard. A step indicator drives the four-step flow
+ * camera → location → description → review. This milestone (M9 -- stub) fills
+ * in the camera step: it reuses the canvas `MockCamera`, pushes a placeholder
+ * photo + thumbnail Blob into the wizard state on capture, and exposes
+ * "Zrób ponownie" (retake) / "Dalej" (continue) buttons. Location, description
+ * and review bodies are filled in by M10–M12.
  */
 export function NewReport() {
   const [stepIndex, setStepIndex] = useState(0);
+  const [images, setImages] = useState<CapturedImages | null>(null);
   const total = STEPS.length;
   const current = STEPS[stepIndex];
+  const isCameraStep = stepIndex === 0;
+
+  const goBack = useCallback(() => {
+    setStepIndex((i) => Math.max(0, i - 1));
+  }, []);
+
+  const goNext = useCallback(() => {
+    setStepIndex((i) => Math.min(total - 1, i + 1));
+  }, [total]);
+
+  const handleCapture = useCallback(() => {
+    setImages(makePlaceholderImages());
+  }, []);
+
+  const handleRetake = useCallback(() => {
+    setImages(null);
+  }, []);
 
   return (
     <main className="page wizard">
@@ -59,7 +83,23 @@ export function NewReport() {
         <h2 id="wizard-step-title" className="wizard__step-title">
           Krok {stepIndex + 1} z {total}: {current.label}
         </h2>
-        <p className="wizard__hint">{STEP_HINT[current.id]}</p>
+
+        {isCameraStep ? (
+          <div className="camera-step">
+            <p className="wizard__hint">{STEP_HINT.camera}</p>
+            {images === null ? (
+              <div className="camera-step__viewfinder">
+                <MockCamera onCapture={handleCapture} />
+              </div>
+            ) : (
+              <p className="camera-step__captured" role="status">
+                Zdjęcie zapisane — przejdź dalej albo zrób je ponownie.
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="wizard__hint">{STEP_HINT[current.id]}</p>
+        )}
       </section>
 
       <nav className="wizard__actions" aria-label="Nawigacja kreatora">
@@ -67,19 +107,32 @@ export function NewReport() {
           type="button"
           className="button button--secondary"
           disabled={stepIndex === 0}
-          onClick={() => setStepIndex((i) => Math.max(0, i - 1))}
+          onClick={goBack}
         >
           Wstecz
         </button>
-        {stepIndex < total - 1 ? (
+
+        {isCameraStep && (
+          <button
+            type="button"
+            className="button button--secondary"
+            disabled={images === null}
+            onClick={handleRetake}
+          >
+            Zrób ponownie
+          </button>
+        )}
+
+        {stepIndex < total - 1 && (
           <button
             type="button"
             className="button button--primary"
-            onClick={() => setStepIndex((i) => Math.min(total - 1, i + 1))}
+            disabled={isCameraStep && images === null}
+            onClick={goNext}
           >
             Dalej
           </button>
-        ) : null}
+        )}
       </nav>
 
       <a className="button button--secondary" href="#/">

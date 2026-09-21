@@ -2,99 +2,132 @@
 
 ## Overview
 
-`civil42pwa-public` is a small PWA: the browser captures a photo + voice note +
-GPS, POSTs them as multipart to a backend, which reverse-geocodes the position
-and persists the report (files + metadata) to Snowflake.
-
-We transform it into a **self-contained, Unix-runnable seed**:
-
-- Frontend stays React + Vite (TypeScript), but all device capture is **mocked**
-  so no camera/mic/GPS permission is requested.
-- Backend becomes a plain **Express (Node 22) server** that serves the built
-  frontend **and** the report API from one origin.
-- Persistence is a **local PostgreSQL 16** database plus an **uploads volume**
-  for the binary files. Snowflake and Firebase are gone.
-- Everything runs under **Docker Compose** with named volumes so it builds and
-  tears down cleanly and data survives restarts.
+`i3` starts as a self-contained Unix-runnable seed (Express + Vite/React +
+PostgreSQL 16 under Docker Compose). The **new direction** turns it into a
+**real, phone-friendly incident-reporting PWA**: open the URL on a phone →
+capture a **real photo** and **real GPS** → review a two-column location +
+map/pin screen → write (or generate) a description → review three readable
+tiles → submit. Every report is stored in **PostgreSQL**, including the photo.
 
 ```
-Browser ──HTTP──> app (Express, port 8080 in container)
-                    ├─ /api/report   → busboy parse → validate → mock geocode
-                    │                 → write file to /app/uploads (volume)
-                    │                 → INSERT into Postgres
-                    ├─ /api/reports  → SELECT from Postgres
-                    ├─ /health      → SELECT 1 against Postgres
-                    └─ /*           → static files from dist/
+Phone browser ──HTTPS──> reverse proxy (TLS, out of scope) ──HTTP──> app (Express, :8080 in container)
+                                                                       ├─ POST /api/report                → busboy parse → validate → geocode
+                                                                       │                                    → INSERT image+thumbnail+metadata into Postgres
+                                                                       ├─ GET  /api/reports               → SELECT metadata (no image bytes)
+                                                                       ├─ GET  /api/reports/:id/image     → SELECT image  BYTEA → image/jpeg
+                                                                       ├─ GET  /api/reports/:id/thumbnail → SELECT thumbnail BYTEA → image/jpeg
+                                                                       ├─ GET  /health                    → SELECT 1
+                                                                       └─ /*                              → static files from dist/
 
-                    app ──TCP 5432──> db (postgres:16-alpine)
-                                       volume: pgdata
+                                                                       app ──TCP 5432──> db (postgres:16-alpine)  volume: pgdata
 ```
+
+Key decisions vs. the previous seed:
+
+| Concern | Previous seed | New direction |
+|---|---|---|
+| Camera | mock canvas only | **real `getUserMedia`** (front camera), with mock fallback |
+| GPS | fixed mock | **real `navigator.geolocation`**, with manual-entry fallback |
+| Photos | files on `uploads` volume + path in DB | **`BYTEA` in Postgres** (compressed full + thumbnail), served via API |
+| Flow | single capture screen | 6-step wizard + separate reports page (hash-routed) |
+| Audio | synthetic WAV | **removed** (not in the requested steps; re-addable module) |
+| Map | none | self-contained `MapPin` tile grid derived from lat/lon |
+
+## Implementation status (living)
+
+- **M8 (Home & navigation shell) — done (stub + real).** Hash mini-router
+  (`#/`, `#/new`, `#/reports`); Home with real Polish copy, the numbered
+  4-step list and "Report issue" / "Zgłoszenia" links; a wizard with a 4-step
+  indicator (`aria-current` tracking) and back/next navigation; and a Reports
+  page with loading / error / empty / ready states. Covered by
+  `src/app.spec.tsx`, `src/pages/NewReport.spec.tsx`,
+  `src/pages/Reports.spec.tsx`.
+- **M9–M15 — not implemented yet.** Camera, location + map/pin, description
+  generation, review/submit, full reports-list rows, the `BYTEA`-backed DB/API,
+  and the final compose/tests/docs pass remain open (stubs first, then real).
+
 
 ## Source & git
 
-- Upstream fetched (read-only clone) at commit
-  `429f9bc33ebc4858fb5f9d156167f5db22821d36` (2026-08-11, "initial commit").
-- Its files are copied into this workspace; we **never configure it as a git
-  remote and never push to it**. This workspace has its own origin and
-  `git commit/push` (on milestone acceptance) targets that origin only.
+- `i3_ref/` is a local clone of `https://github.com/FDHKRsss/i3.git` (the repo
+  we are asked to work on). Milestone-acceptance commits target its own origin.
+- `civil42pwa_ref/` is a **read-only reference** (the protoplast). It is never
+  configured as a git remote and **never pushed to**.
+- Neither `README.md` (workspace or `i3_ref/README.md`) is written by agents; the
+  goal/human gate owns them.
 
 ## Tooling (chosen, and why)
 
 | Concern | Choice | Why (vs. alternatives) |
 |---|---|---|
-| Runtime | Node.js **22 LTS** (`node:22-alpine`) | LTS, matches the original Cloud Functions engine (22); Alpine keeps images small. |
-| Frontend | **Vite 5 + React 18 + TS** (already in repo) | Keep the existing app; minimal change. |
-| Backend | **Express** + **busboy** + **pg** | Express is the default simple HTTP server; busboy already parses multipart in the source; `pg` is the standard Postgres driver. |
-| DB | **PostgreSQL 16** (alpine) | Simple, durable, official Docker image; replaces Snowflake with a real local DB. |
-| Server execution | `tsc` → `server-dist/` then `node` | One TS language across the repo; a compiled server keeps the runtime image lean (no `tsx` in prod). |
-| Package manager | **npm** | Simplest/universal; drops the source's pnpm lock and Firebase/surge/PWA-asset tooling. |
-| PWA plugin | **removed** | Offline/installability is not core to the seed and adds `sharp`/asset-generation complexity; revisit later if needed. |
+| Runtime | Node.js **22 LTS** | already in use; LTS. |
+| Frontend | **Vite 5 + React 18 + TS** (already present) | keep the working app; minimal change. |
+| Backend | **Express** + **busboy** + **pg** | already present; busboy parses multipart, `pg` drives Postgres. |
+| DB | **PostgreSQL 16** (alpine) | already present; `BYTEA` + `gen_random_uuid()`. |
+| Image processing | **none on the server** (no `sharp`) | the browser downscales/compresses via `<canvas>`; keeps the image lean and avoids a native dep. |
+| Routing | **hash mini-router** (~40 LOC, no dependency) | real URLs + back-button on mobile without adding `react-router`. |
+| Map | **self-contained `MapPin`** using OSM raster tiles | no dependency (rejects `leaflet`); tile math is ~30 LOC and the pin is CSS/SVG. |
+| AI description | **deterministic template module** | no API key/network; LLM API is a marked later swap. |
+| Package manager | **npm** | already present. |
 
 ## What will be in the code
 
 ```
-.
-├─ src/                     # frontend (Vite + React, TypeScript)
-│  ├─ main.tsx              # entry + error boundary
-│  ├─ app.tsx               # capture → submit → show result
+i3_ref/
+├─ src/                        # frontend (Vite + React, TypeScript)
+│  ├─ main.tsx                 # entry + error boundary
+│  ├─ app.tsx                  # hash router → Home / New wizard / Reports
+│  ├─ pages/
+│  │  ├─ Home.tsx              # numbered steps + "Report issue" + "Zgłoszenia"
+│  │  ├─ NewReport.tsx         # wizard state machine (camera→location→description→review)
+│  │  └─ Reports.tsx           # lists all reports from Postgres
 │  ├─ capture/
-│  │  ├─ MockCamera.tsx      # canvas that draws a placeholder photo
-│  │  ├─ useMockAudio.ts     # synthesizes a WAV blob (no mic)
-│  │  └─ location.ts         # mock GPS default {lat, lon}
-│  ├─ send.tsx              # multipart POST to /api/report
-│  └─ ...                   # css, tests
-├─ server/                  # backend (TypeScript, compiled to server-dist/)
-│  ├─ index.ts              # Express app, routes, static serving, listen(PORT)
-│  ├─ report.ts             # multipart parse + validation + orchestration
-│  ├─ db.ts                 # pg pool, insertReport, listReports, ping
-│  ├─ store.ts              # write/delete upload files under UPLOAD_DIR
-│  └─ geo.ts                # reverse-geocode (mock provider by default)
+│  │  ├─ Camera.tsx            # real getUserMedia camera + shutter + fallback
+│  │  ├─ MockCamera.tsx        # kept as the permission-denied/headless fallback
+│  │  ├─ location.ts           # navigator.geolocation + manual fallback
+│  │  └─ image.ts              # canvas downscale/compress → full + thumbnail blobs
+│  ├─ map/
+│  │  └─ MapPin.tsx            # OSM tile grid + centered pin (interactive + thumb sizes)
+│  ├─ description.ts           # generateDescription() (deterministic A.I.-style text)
+│  ├─ send.tsx                 # multipart POST (image, thumbnail, lat, lon, description)
+│  └─ ...
+├─ server/                     # backend (TypeScript, compiled to server-dist/)
+│  ├─ index.ts                 # routes incl. /api/reports/:id/image|thumbnail
+│  ├─ report.ts                # multipart parse + validation + orchestration
+│  ├─ db.ts                    # insert/list/getImage/getThumbnail/ping
+│  └─ geo.ts                   # reverse-geocode (mock default; nominatim opt-in)
 ├─ db/
-│  └─ init.sql              # reports table (runs on first Postgres boot)
-├─ Dockerfile               # multi-stage: build frontend+server → runtime
-├─ docker-compose.yml       # app + db, named volumes, env-configurable port
-├─ .env.example             # APP_PORT, DATABASE_URL, GEO_PROVIDER, ...
-├─ package.json             # single root package (frontend + server deps)
-├─ tsconfig.test.json       # typechecks tests/** (separate from app build)
-├─ tests/                   # vitest suites: app/report/send/geo/store/runbook/pipeline
-└─ docs/                    # PLAN + ARCHITECTURE + RUNBOOK (compose flow)
+│  └─ init.sql                 # reports table (description + image/thumbnail BYTEA)
+├─ Dockerfile                  # multi-stage: build frontend+server → runtime
+├─ docker-compose.yml          # app + db, pgdata volume, APP_PORT env
+├─ .env.example                # APP_PORT, POSTGRES_*, GEO_PROVIDER, MAX_UPLOAD_BYTES
+└─ docs/                       # PLAN + ARCHITECTURE + CONTEXT + RUNBOOK
 ```
 
-## Verification & runbook
+## Mobile reporting flow (the 6 user steps)
 
-- `docs/RUNBOOK.md` is the compose runbook: it verifies `docker compose up`
-  end-to-end on a plain Unix box (build, health, capture→submit→geocode→
-  persist→list, volume persistence across `down`/`up`, and a clean `down -v`
-  reset).
-- Because Docker is not available in this dev workspace, `tests/runbook.spec.ts`
-  pins the runbook's concrete facts (env defaults, compose wiring, schema, served
-  title, upload dir, expected API outputs) to the real source so the doc cannot
-  silently drift from the implementation.
-- `npm test` runs a `pretest` (`npm run build:frontend`), so a fresh clone has a
-  `dist/` for the SPA-serving specs; `npm run typecheck` also typechecks
-  `tests/**` via `tsconfig.test.json`, and `tests/pipeline.spec.ts` pins that
-  wiring so it cannot be silently dropped. The rest of the behavior is validated
-  by `npm test` + `npm run typecheck` (currently 49 tests across 11 files).
+1. **Home** (`#/`) — short app description, the steps as a numbered list
+   (1 camera → 2 location/map → 3 description → 4 review → submit), and two
+   buttons: **"Report issue"** (`#/new`) and **"Zgłoszenia"** (`#/reports`).
+2. **Camera** — live preview from the rear camera; tap shutter → downscale +
+   JPEG-compress → keep `full` (≤1280 px) and `thumbnail` (≤360 px) blobs in
+   the wizard state.
+3. **Location** — `navigator.geolocation` (high accuracy, ~10 s timeout);
+   on success show a two-column screen: **left = coordinates + address +
+   accuracy**, **right = map with pin**. On failure: retry + manual lat/lon.
+4. **Description** — editable textarea + **"Generate"** button → fills the
+   default AI-style description (see "Description generation").
+5. **Review** — three side-by-side tiles: **photo thumbnail**, **map+pin
+   thumbnail**, **summary** (description + coordinates + address). A submit
+   button persists and redirects to `#/reports`.
+6. **Reports** (`#/reports`) — every report from Postgres, newest first, each
+   showing photo thumbnail, map thumbnail, description, coordinates, timestamp.
+
+> Interpretation note: the user wrote *"miniaturki 3 obok siebie czytelne"*.
+> The two images the flow produces are the **photo** and the **map/pin**, so the
+> third tile is the **summary** (description + coordinates), which keeps all
+> captured data readable in a 3-up layout. If a third *image* is later wanted,
+> the review page is a single component and the tile set is trivial to change.
 
 ## Database schema (`db/init.sql`)
 
@@ -104,64 +137,170 @@ CREATE TABLE IF NOT EXISTS reports (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   lat         DOUBLE PRECISION,
   lon         DOUBLE PRECISION,
-  audio_path  TEXT NOT NULL,
-  image_path  TEXT,
-  geo_desc    TEXT
+  geo_desc    TEXT,
+  description TEXT NOT NULL DEFAULT '',
+  image       BYTEA NOT NULL,
+  thumbnail   BYTEA
 );
+
+CREATE INDEX IF NOT EXISTS reports_created_at_idx
+  ON reports (created_at DESC);
 ```
 
-- Binary files are written to `UPLOAD_DIR` (default `/app/uploads`, a named
-  volume) as `<id>.webm`/`<id>.png`; the DB stores only relative paths.
-- `gen_random_uuid()` is built into Postgres ≥ 13, so no extension is needed.
+- **How photos are stored**: the browser uploads the compressed photo and a
+  small thumbnail; both are stored as `BYTEA` in Postgres. `image` is required,
+  `thumbnail` optional (derived server-side is not needed). List queries select
+  **only** metadata + `thumbnail` (or only metadata) — never the full `image` —
+  so the reports list stays cheap.
+- **Why `BYTEA` and not files-on-volume + path**: single source of truth in the
+  one DB (matches "zapisywal w postgresie"), no orphaned files, no separate
+  image volume/static route to secure, `pg_dump` backs up everything, and
+  PostgreSQL TOAST handles the (already compressed) sizes comfortably.
+  Full-resolution originals (~several MB) are **not** stored; the client
+  compresses to a bounded size first. A future swap to object storage (S3) is
+  noted below.
 
 ## API contract
 
-- `POST /api/report` — multipart/form-data.
-  - `voice` (file, required), `image` (file, optional), `lat`/`lon` (strings).
-  - `200` → `Report received successfully`; `400` on malformed/invalid input;
-    `405` on non-POST; `500` on server/DB failure (message logged, not leaked).
-- `GET /api/reports?limit=50` — JSON list of recent reports (newest first).
-- `GET /health` — `{ ok: true, db: "up" }` after `SELECT 1`.
+- `POST /api/report` — `multipart/form-data`.
+  - `image` (file, **required**, JPEG) — the compressed photo (the client always
+    uploads a canvas-compressed JPEG; see "Capture & permissions").
+  - `thumbnail` (file, optional) — small JPEG.
+  - `lat` / `lon` (strings, optional but validated as finite, in-range).
+  - `description` (string, optional) — defaults to `""`.
+  - `200` → `Report received successfully` (or the created id); `400` on
+    malformed/missing image/invalid coords; `405` non-POST; `500` on server/DB
+    failure (message logged, not leaked).
+- `GET /api/reports?limit=50` — JSON list, newest first; each item returns
+  `id`, `created_at`, `lat`, `lon`, `geo_desc`, `description`, and
+  `thumbnailUrl` / `imageUrl` (no inline image bytes).
+- `GET /api/reports/:id/image` → `image/jpeg` (or `404` if absent).
+- `GET /api/reports/:id/thumbnail` → `image/jpeg` (or `404` if absent).
+- `GET /health` → `{ ok: true, db: "up"|"down" }` after `SELECT 1`.
 
-## Mocking strategy
+## Capture & permissions (replaces the old "Mocking strategy")
 
-| Original | Seed behaviour |
-|---|---|
-| `navigator.mediaDevices.getUserMedia({video})` | `MockCamera` draws a timestamped placeholder on a `<canvas>`; "capture" → `canvas.toBlob('image/png')`. |
-| `getUserMedia({audio})` + `MediaRecorder` | `useMockAudio` synthesizes a short WAV (PCM sine) in JS → `Blob('audio/wav')`. |
-| `use-geo-location` prompt | `location.ts` returns a fixed default (e.g. Warsaw) — no prompt. |
-| Nominatim reverse-geocode | `geo.ts` returns `"mock location (lat, lon)"` by default; the module boundary allows a real provider later. |
+The previous mandate *"all device capture is mocked so no permission is
+requested"* is **removed** — it directly contradicts the goal. The new rules:
 
-All three device mocks keep the same interfaces as the originals so the real
-implementations can be swapped back one file at a time.
+| Capability | Primary (real) | Fallback (still runs headless/denied) |
+|---|---|---|
+| Camera | `navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })` | `MockCamera` canvas placeholder, with a clear "camera unavailable" note |
+| GPS | `navigator.geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000 })` | manual lat/lon entry + retry (no silent fake location) |
+| Reverse geocode | `geo.ts` → `nominatim` (opt-in via `GEO_PROVIDER=nominatim`) | deterministic `mock` provider (default) |
+
+- The fallbacks keep the module interfaces identical to the originals so each
+  real implementation can be swapped in/out one file at a time.
+- **Secure context**: `getUserMedia` and `geolocation` only work over **HTTPS**
+  (or `localhost`). The app logs a clear in-page error otherwise. Deployment
+  must put a TLS-terminating reverse proxy in front of the container (see
+  "Port & resource handling").
+
+## Map & pin
+
+- `MapPin` renders a small, non-interactive-by-default map from a `{lat,lon}`:
+  it computes the OSM slippy-map tile for a fixed zoom (~16), lays out an N×N
+  grid of `https://tile.openstreetmap.org/{z}/{x}/{y}.png` `<img>`s around the
+  center tile, and overlays a centered pin (SVG/CSS) using the fractional pixel
+  offset of the coordinate inside the center tile. A tiny "© OpenStreetMap"
+  attribution is included.
+- This gives the *"zrzut ekranu z mapą i pinezką"* look without persisting any
+  map image: it is always derived from the stored coordinates, so the same
+  component powers the location step, the review tile, and each reports-list
+  row. Tile requests are made by the phone browser directly to OSM.
+
+## Description generation
+
+- `generateDescription({ hasImage, lat, lon, at })` returns a deterministic,
+  AI-style string (the requested default
+  `"test default description A.I. generated based on the incident picture"`,
+  optionally annotated with the captured time/coordinates). The "Generate"
+  button fills the textarea; the user can edit before submitting.
+- A real LLM call is deliberately out of scope (needs an API key + network);
+  the module is the single swap point for a real provider later.
 
 ## Port & resource handling
 
 - **Host port is configurable**: `APP_PORT` env (default `8080`) maps to the
-  container's fixed `8080`. Never assume the host port is free — change
-  `APP_PORT` in `.env`.
+  container's fixed `8080`. Never assume the host port is free.
 - Postgres is **internal only** (no host port published) to avoid `5432`
-  conflicts; reach it with `docker compose exec db psql ...` when needed.
-- `DATABASE_URL` is injected (default `postgres://civil42:civil42@db:5432/civil42`).
-- Upload size is capped (configurable `MAX_UPLOAD_BYTES`, default 15 MB) and
-  `lat`/`lon` are validated to finite, in-range numbers.
+  conflicts.
+- `DATABASE_URL` is injected (default
+  `postgres://civil42:civil42@db:5432/civil42`).
+- Upload size is capped (`MAX_UPLOAD_BYTES`, default 15 MB) and `lat`/`lon` are
+  validated finite + in-range. Images are expected to be small because the
+  client pre-compresses them; a too-large image is a `400`.
+- **HTTPS for phones**: the container serves plain HTTP on `APP_PORT`; expose it
+  through a TLS reverse proxy (e.g. Caddy/Traefik/nginx + Let's Encrypt) so the
+  phone browser grants camera/GPS. `localhost` needs no TLS.
 
 ## Failure modes & error handling
 
-- DB down at app start → app still boots; `/health` reports `db: "down"`; report
-  POST returns `500` rather than hanging.
-- Malformed multipart / missing voice / bad coordinates → `400` with a short
-  message.
-- File write or DB insert fails → `500`, temp files cleaned up, no partial
-  record left in a visible "success" state.
+- DB down at app start → app still boots; `/health` reports `db: "down"`;
+  report POST returns `500` (details logged, not leaked).
+- Missing/empty image, malformed multipart, bad coordinates → `400` with a
+  short message.
+- Camera denied / insecure context / no camera → in-page error + fallback to
+  mock capture; the flow still completes.
+- GPS denied / timeout → in-page error + retry + manual lat/lon entry.
+- File insert or DB write fails → `500`; no partial record is left visible as
+  success (the single-row insert is atomic).
 - Port already bound inside the container → server fails fast with a clear
   message; host-side conflicts are handled by changing `APP_PORT`.
 
-## Removed & why (scope)
+## Critic feedback (this turn) — all accepted
 
-- `functions/` (Firebase Cloud Functions), `firebase.json`, `.firebaserc`,
-  `snowflake.ts`, `snowflake-sdk` → replaced by Express + Postgres.
-- `.github/workflows` (Firebase/surge deploys) → out of scope for a local seed.
-- `vite-plugin-pwa` + `pwa-assets-generator` + `surge` → offline/install not
-  core to the seed; simplifies the build.
-- `use-geo-location` → replaced by the mock GPS module.
+1. **"No deliverable at all."** Accepted — this turn writes `docs/PLAN.md`
+   (new M8–M15) and `docs/ARCHITECTURE.md` (this document).
+2. **"New goal absent / architecture contradicts it (mocking mandate)."**
+   Accepted — "Capture & permissions" above replaces the mock-only mandate with
+   real capture + fallback.
+3. **"Schema cannot store the AI description."** Accepted — `description` column
+   added (and `image`/`thumbnail` `BYTEA`).
+4. **"None of the required UI steps exist."** Accepted — the "Mobile flow"
+   section + M8–M13 cover start page, camera, location, description, review,
+   and reports list.
+5. **"No map/pin capability and no way to serve uploaded images."** Accepted —
+   `MapPin` component + `/api/reports/:id/image|thumbnail` endpoints added.
+
+None of the points push the project out of scope; they are exactly the stated
+goal, so nothing is rejected.
+
+## Post-approval polish (minor/cosmetic — recorded, no scope change)
+
+The critic approved the plan and flagged two cosmetic doc items; both are
+recorded here (and in PLAN "Post-approval polish") so they are not lost:
+
+1. **`RUNBOOK.md` still documents the mock-capture mandate** and cross-references
+   the now-renamed "Mocking strategy" section. This is **deferred, not an
+   oversight**: the runbook accurately describes the *current* still-mock code,
+   and its full rewrite is already scheduled under **M15 -- real** (the dangling
+   "Mocking strategy" → now "Capture & permissions" reference is fixed there).
+2. **API contract listed `image` as `JPEG/PNG`** while the serving routes return
+   `image/jpeg`. **Fixed now**: `image` is JPEG only — M9 -- real commits the
+   client to always upload a canvas-compressed JPEG, so PNG is unreachable in
+   the real flow. (Applied in "API contract" above.)
+
+## Out of scope & future swaps (modular, minimal now)
+
+- **PWA installability / offline** — not required by the steps; re-addable via
+  `vite-plugin-pwa` later.
+- **Real AI description** — `description.ts` swap point (needs keys/network).
+- **Object storage (S3/MinIO)** — `db.ts`/`report.ts` swap point if bytea ever
+  outgrows the use case.
+- **Audio capture** — removed to match the requested photo+location+description
+  flow; the capture-module boundary makes it easy to re-add.
+- **Interactive/draggable map** — `MapPin` is intentionally static; a full
+  `leaflet`/`maplibre` swap point is isolated in `src/map/`.
+
+## Verification & runbook
+
+- `docs/RUNBOOK.md` will be updated to cover the new flow end-to-end on a plain
+  Unix box: build, health, `capture → location → description → review →
+  submit → persist → list`, image/thumbnail serving, bytea persistence across
+  `down`/`up`, and the HTTPS requirement for real camera/GPS on a phone.
+- `npm test` + `npm run typecheck` remain the dev-workspace gate (Docker is not
+  available here); `tests/runbook.spec.ts` keeps the runbook pinned to source.
+  New tests: description generator, map tile math, geo provider, db row mapping,
+  report validation (missing image / bad coords / size), endpoint responses,
+  and frontend render tests for Home / wizard / reports.

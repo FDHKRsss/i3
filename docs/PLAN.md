@@ -2,84 +2,153 @@
 
 ## Goal(s)
 
-1. **Bring the code in, but never touch the source remote.** Fetch
-   `https://github.com/rzymek/civil42pwa-public.git`, keep a local working copy,
-   and transform it. We never add that repo as a `remote` and never push to it;
-   all commits go to *this* workspace's own origin only.
-2. **Make it run locally on a plain Unix box (AWS EC2 or anywhere).** Keep the
-   real functionality that is already there: a report is captured (photo + audio
-   + GPS), sent to a backend, reverse-geocoded, and persisted.
-3. **Drop Snowflake.** Replace it with a **local database** (PostgreSQL).
-4. **Mock the device bits that can't/shouldn't run headless** (camera, and by
-   extension audio + GPS, and reverse-geocoding): do **not** ask for camera/mic
-   permissions. This is a seed ("zalazek"), not a production capture app.
-5. **Docker + Docker Compose + volumes.** One-command build and tear-down, data
-   survives across `docker compose down/up`. Simple tools.
+1. **Continue the already-working `i3` project** (fetched from
+   `https://github.com/FDHKRsss/i3.git`) and turn it into a **real,
+   phone-friendly incident-reporting PWA**: when it is exposed at some address,
+   a person opening it on a phone can take a **real photo** and have their
+   **real GPS** captured — like the protoplast (`civil42pwa-public`), not as a
+   mocked desktop-only seed.
+2. **Persist everything in PostgreSQL.** Photos must be stored in Postgres
+   (decide *how* — see ARCHITECTURE "Database schema": compressed `bytea` +
+   thumbnail).
+3. Implement the exact **step flow** the user described:
+   1. Start page: short description of the app and the numbered steps, plus a
+      **"Report issue"** (start) button and a **"Zgłoszenia"** button.
+   2. Camera page: take a photo and save it (into Postgres).
+   3. Location page: capture GPS; show **coordinates on one side and the image
+      on the other** (two-column layout), plus a **map with a pin**.
+   4. Description page: a text field and a **"Generate"** button that fills in
+      an AI-style default description.
+   5. Review page: three **thumbnails side by side, readable**.
+   6. Reports page: a separate page listing **all reports from Postgres**.
+4. Keep the **two-pass** rule: Pass 1 builds the whole flow with stubs/mocks so
+   it runs end-to-end; Pass 2 replaces each stub with the real implementation.
 
-Everything below is a means to these goals. The plan is a living document: items
-are re-checked against the goals at each review and adjusted incrementally.
+Everything below is a means to these goals. The plan is a living document:
+items are re-checked against the goals at each review and adjusted
+incrementally. The previous "mock capture seed" milestones (M1–M7) are complete
+and kept below as history; the **new** work is M8–M15.
 
 ## Human notes & how they are handled
 
-- *"nie pushuj nic do tego repo"* — the source repo is only cloned/copied in;
-  no `remote` pointing at `civil42pwa-public` is configured, and `git push`
-  targets this workspace's own origin. See ARCHITECTURE "Source & git".
-- *"wywal snowflake … postaw lokalna baze danych"* — M1 removes the Snowflake
-  SDK/Firebase functions; M2 introduces PostgreSQL with a schema and a volume.
-- *"zdjecie zmockowac … nie pros o dostepy do kamery"* — M4 replaces `getUserMedia`
-  (camera **and** mic) and the GPS prompt with deterministic mocks; no permission
-  prompts remain.
-- *"rzeczy nie da sie latwo zrobic … pomockuj"* — reverse-geocoding defaults to a
-  mock provider (M3) but is isolated in one module so it can be swapped later.
-- *"docker + compose + volumes … latwo budowalo i stawialo spowrotem"* — M5.
-- *"dobierz narzedzia (proste)"* — Node 22 LTS, Vite + React (already present),
-  Express, `pg`, `busboy`, PostgreSQL 16; see ARCHITECTURE "Tooling".
+- *"konthynuuj to co zostalo juz zaczete, bo obecna wersja jest wersja dzialajaca"* —
+  we keep the working Express + Postgres + Vite/React foundation and evolve it;
+  M8–M15 replace the mocked capture flow with the real mobile flow.
+- *"zrob ja bardziej jak z repo protoplasty … zeby z komorki mogl zrobic zdjecie,
+  zeby pobralo jego gps"* — M9 replaces the mock camera with real `getUserMedia`;
+  M10 replaces the mock GPS with real `navigator.geolocation`. Both keep a
+  permission-denied fallback so the app still runs where capture is impossible.
+- *"zrzut ekranu … z mapa i np pinezka … zeby to wizualnie mialo sens"* — M10 adds a
+  self-contained `MapPin` component (OSM tile grid + centered pin) rendered from
+  the captured coordinates; it is derived from lat/lon, so no map image needs to
+  be persisted. (Interpretation recorded in ARCHITECTURE "Map & pin".)
+- *"teraz to trzymamy w postgresie, nie wiem jak tam sie przechowuje zdjecia,
+  wymysl cos"* — M14 stores the compressed photo **and** a small thumbnail as
+  `BYTEA` columns in Postgres and serves them via `/api/reports/:id/image` and
+  `/api/reports/:id/thumbnail` (ARCHITECTURE "Database schema").
+- *"przycisk 'generate' ktory bedzie generowal opis"* — M11 implements a
+  `generateDescription()` module producing the default A.I.-style text; no
+  external LLM/API key is required (real LLM is a marked later swap).
+- *"miniaturki 3 obok siebie czytelne"* — M12 renders the review page as three
+  side-by-side tiles: **photo**, **map+pin**, **summary** (description +
+  coordinates). (Interpretation recorded in ARCHITECTURE "Mobile flow".)
+- *"dodatkowy przycisk 'zgloszenia' … listuje wszystkie zgloszenia w postgresie"* —
+  M8 adds the button, M13 renders the list from `GET /api/reports`.
+- *"nie pushuj nic do tego repo"* (about `civil42pwa-public`) — that repo remains a
+  read-only reference at `civil42pwa_ref/`; it is never configured as a git
+  remote and never pushed to. See ARCHITECTURE "Source & git".
 
 ## Constraints (non-negotiable)
 
 - Do **not** push to `civil42pwa-public`. Do not add it as a git remote.
-- Do **not** write `README.md` (owned by the goal / human gate).
+- Do **not** write `README.md` (owned by the goal / human gate) — neither the
+  workspace one nor `i3_ref/README.md`.
 - Host port must be configurable via env with a default; never assume a fixed
   host port is free.
-- No device permission prompts in the app (camera/mic/GPS all mocked).
-- Keep the original user-visible functionality: capture → submit → persist →
-  show result.
+- Real capture is the goal, but the app must still boot and be testable where
+  camera/GPS are unavailable (permission denied, headless test): every capture
+  module has a deterministic fallback.
+- Camera + geolocation require a **secure context** (HTTPS, or `localhost`);
+  the docs must state this clearly.
+- Photos are stored in Postgres (no orphaned files, no separate image volume).
 
-## Milestones
+## Completed milestones (previous seed — history, kept as `[x]`)
 
 Pass 1 = every milestone as a stub/mock so the whole app runs end-to-end.
 Pass 2 = replace each stub with the real implementation.
 
 - [x] M1 -- stub   Bootstrap: directory skeleton (src/ server/ db/) + no-op server + placeholder Dockerfile/compose so the repo boots.
-- [x] M1 -- real   Source already copied into the workspace; this step removes Firebase, Snowflake, `.github` CI, surge/PWA asset gen and consolidates into one root `package.json`.
+- [x] M1 -- real   Source copied in; Firebase, Snowflake, `.github` CI, surge/PWA asset gen removed; single root `package.json`.
 
-- [x] M2 -- stub   DB layer mocked: in-memory store returning canned rows; no real database needed yet.
-- [x] M2 -- real   PostgreSQL 16 via compose, `db/init.sql` schema (`reports` table), `pg` pool + insert/list.
+- [x] M2 -- stub   DB layer mocked: in-memory store returning canned rows.
+- [x] M2 -- real   PostgreSQL 16 via compose, `db/init.sql` (`reports` table), `pg` pool + insert/list.
 
-- [x] M3 -- stub   Backend API stubbed: Express serves `/health`, `POST /api/report`, `GET /api/reports` with canned responses.
-- [x] M3 -- real   Backend real: multipart parse (busboy), validation, mock reverse-geocode module, write uploads to volume, persist + list via `pg`, serve built `dist/`.
+- [x] M3 -- stub   Backend API stubbed: `/health`, `POST /api/report`, `GET /api/reports` with canned responses.
+- [x] M3 -- real   Backend real: multipart parse (busboy), validation, mock geo, uploads volume, persist + list via `pg`, serve `dist/`.
 
-- [x] M4 -- stub   Frontend stub: App renders and submits a hard-coded Blob to the backend; shows the response.
-- [x] M4 -- real   Frontend real: mock camera (canvas-generated PNG), mock audio (synthetic WAV), mock GPS default, submit multipart to `/api/report`, error handling + result label.
+- [x] M4 -- stub   Frontend stub: App renders and submits a hard-coded Blob.
+- [x] M4 -- real   Frontend real: mock camera, mock audio, mock GPS, submit multipart, result label.
 
-- [x] M5 -- stub   Compose stub: minimal `docker-compose.yml` + `Dockerfile` that build/start a placeholder; named volumes declared.
-- [x] M5 -- real   Compose real: multi-stage build (frontend + server), `app` + `db` services, `pgdata`/`uploads` volumes, `APP_PORT` configurable, healthchecks, `depends_on`.
+- [x] M5 -- stub   Compose stub: minimal compose + Dockerfile placeholder.
+- [x] M5 -- real   Compose real: multi-stage build, `app` + `db`, `pgdata`/`uploads` volumes, `APP_PORT`, healthchecks.
 
-- [x] M6 -- stub   Tests stub: placeholder vitest/supertest smoke + a docs/RUNBOOK placeholder.
-- [x] M6 -- real   Tests real: backend validation + geo-mock unit tests, frontend render smoke test, and a runbook verifying `docker compose up` end-to-end.
+- [x] M6 -- stub   Tests stub: vitest/supertest smoke + RUNBOOK placeholder.
+- [x] M6 -- real   Tests real: backend validation + geo-mock unit tests, frontend smoke, runbook pins.
 
-- [x] M7 -- real   Fresh-clone robustness (no stub phase): `npm test` now runs a `pretest` (`npm run build:frontend`) so the SPA-serving specs have a `dist/` even on a clean checkout; `npm run typecheck` also typechecks `tests/**` via a new `tsconfig.test.json`; `tests/pipeline.spec.ts` pins that wiring; extra specs cover the SPA fallback, non-numeric `limit`, and lat-only geocode skip.
+- [x] M7 -- real   Fresh-clone robustness: `pretest` builds `dist/`; `typecheck` covers `tests/**`; SPA fallback + non-numeric `limit` + lat-only geocode specs.
+
+## Current milestones (new mobile-reporting flow)
+
+- [x] M8 -- stub   **Home & navigation shell.** Hash mini-router (`#/`, `#/new`, `#/reports`); Home renders the numbered step list and the two buttons ("Report issue" → `#/new`, "Zgłoszenia" → `#/reports`); wizard and reports are placeholders.
+- [x] M8 -- real   Real copy (PL), wired navigation, step indicator in the wizard, reports page shell with empty/error states. No placeholder text left.
+
+- [ ] M9 -- stub   **Camera step.** Reuse the canvas mock to push a placeholder photo + thumbnail Blob into the wizard state; "Retake"/"Continue" buttons.
+- [ ] M9 -- real   **Camera step.** Real `getUserMedia({video:{facingMode:'environment'}})` live preview + shutter; canvas downscale → compressed JPEG (≤1280 px) + thumbnail (≤360 px); permission/error fallback to the mock; stop tracks on unmount.
+
+- [ ] M10 -- stub  **Location step.** Mock GPS + grey placeholder map with a pin; two-column layout (coordinates | map).
+- [ ] M10 -- real  **Location step.** `navigator.geolocation.getCurrentPosition` (high accuracy, timeout), error + retry + manual lat/lon fallback; `MapPin` (OSM tile grid + centered pin); two columns (left: coordinates + address + accuracy, right: map); reverse-geocode via `geo.ts` (mock default, `nominatim` opt-in).
+
+- [ ] M11 -- stub  **Description step.** Textarea + "Generate" button that sets the fixed default `"test default description A.I. generated based on the incident picture"`.
+- [ ] M11 -- real  **Description step.** `generateDescription()` builds a deterministic A.I.-style description from the picture/location metadata; editable textarea; non-empty validation before continuing.
+
+- [ ] M12 -- stub  **Review & submit.** Three placeholder tiles (photo, map, summary) from wizard state; "Submit" posts to `/api/report` and shows a canned success.
+- [ ] M12 -- real  **Review & submit.** Real photo thumbnail, real map thumbnail, summary tile (description + coordinates); multipart POST (`image`, `thumbnail`, `lat`, `lon`, `description`); 4xx/5xx handling; success → `#/reports`.
+
+- [ ] M13 -- stub  **Reports list.** `/api/reports` returns canned rows; list renders placeholders.
+- [ ] M13 -- real  **Reports list.** Fetch `/api/reports`; render each report with photo thumbnail, map thumbnail, description, coordinates, timestamp; newest first; empty/error states.
+
+- [ ] M14 -- stub  **Backend & DB.** Endpoints `/api/reports`, `/api/reports/:id/image`, `/api/reports/:id/thumbnail` with canned data; in-memory store with the new shape.
+- [ ] M14 -- real  **Backend & DB.** `db/init.sql` new `reports` table (drop audio, add `description`, `image BYTEA`, `thumbnail BYTEA`); `db.ts` insert/list/get image/get thumbnail; `report.ts` multipart parse (`image` required, `thumbnail` optional, `lat`, `lon`, `description`) + validation; image-serving routes; health.
+
+- [ ] M15 -- stub  **Compose, tests & docs.** Compose still boots `app`+`db`; smoke tests pass with stubs; RUNBOOK placeholder.
+- [ ] M15 -- real  **Compose, tests & docs.** Compose drops the `uploads` volume (bytea storage), keeps `pgdata`, `APP_PORT` env; documents the HTTPS reverse-proxy requirement for mobile camera/GPS; unit + frontend tests for description generator, map tile math, geo, db row mapping, report validation, endpoints, Home/wizard/reports; RUNBOOK updated; `npm test` + `npm run typecheck` green.
 
 ## Current status
 
-- Source fetched and copied into the workspace (read-only clone; no remote added).
-- Full implementation is in place: `server/` (Express + `pg` + mock geo + busboy),
-  `src/` frontend with mocked camera/audio/GPS (`src/capture/`), `db/init.sql`
-  schema, `docker-compose.yml`, multi-stage `Dockerfile`, and the full test suite
-  (`tests/` + `*.spec.ts(x)`).
-- `docs/RUNBOOK.md` documents the full `docker compose up` flow (build, health,
-  capture→submit→geocode→persist→list, volume persistence, teardown), and
-  `tests/runbook.spec.ts` pins the runbook's concrete claims to the real source
-  so they cannot drift.
-- All milestones M1–M7 are complete (M7 has no separate stub phase); the suite is
-  green (`npm test` + `npm run typecheck`, 49 tests passing across 11 files).
+- The previous seed (M1–M7) is complete and green; it is the baseline we evolve.
+- **This turn**: **M8 -- real is implemented and green** — Home renders real
+  Polish copy + the numbered 4-step list + "Report issue" / "Zgłoszenia" links;
+  the wizard renders a 4-step indicator with `aria-current` tracking and working
+  back/next navigation; the Reports page renders loading / error / empty / ready
+  states from `GET /api/reports`. `npm test` (67 passed) and
+  `npm run typecheck` are green, so **M8 is now fully complete (stub + real)**.
+- Next: **M9 -- stub** — wire the existing canvas mock into the camera step so
+  the wizard advances with a placeholder photo + thumbnail Blob, then continue
+  the remaining Pass 1 stubs (M10–M15).
+- Review signal at the end of Pass 1 will be `STUBS_DONE`; when M15 -- real is
+  green the signal is `ALL_MILESTONES_DONE`.
+
+## Post-approval polish (minor — recorded, no scope change)
+
+The critic approved the plan and flagged two cosmetic doc items; both are
+recorded here (and in ARCHITECTURE "Post-approval polish") so they are not lost:
+
+- **`RUNBOOK.md` still states the mock-capture mandate** and cross-references the
+  renamed ARCHITECTURE section. This is **deferred** (not an oversight): the
+  runbook accurately describes the *current* still-mock code, and its rewrite is
+  already scheduled under **M15 -- real** (the dangling "Mocking strategy" → now
+  "Capture & permissions" reference is fixed there).
+- **ARCHITECTURE API contract listed `image` as `JPEG/PNG`** while serving routes
+  always return `image/jpeg`. **Fixed now**: `image` is JPEG only — M9 -- real
+  commits the client to always upload a canvas-compressed JPEG, so PNG is
+  unreachable in the real flow.

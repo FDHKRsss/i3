@@ -1,4 +1,213 @@
 #app {
     margin: 0 auto;
     max-width: 16cm;
+    padding: 0 16px;
+}
+
+.home,
+.page {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 24px 0;
+}
+
+.home__header,
+.home__section-title {
+    margin: 0;
+}
+
+.home__intro {
+    margin: 8px 0 0;
+    color: #334155;
+}
+
+.home__actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.steps {
+    margin: 0;
+    padding-left: 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    line-height: 1.4;
+}
+
+.button {
+    display: inline-block;
+    padding: 14px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 1.05rem;
+    font-weight: 600;
+    line-height: 1;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.button--primary {
+    background: #2563eb;
+    color: #ffffff;
+}
+
+.button--secondary {
+    background: #e2e8f0;
+    color: #0f172a;
+}
+
+.button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* Wizard (M8 -- real shell) */
+
+.wizard__header {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.wizard__header h1 {
+    margin: 0;
+}
+
+.stepper {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    gap: 8px;
+}
+
+.stepper__step {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    color: #94a3b8;
+}
+
+.stepper__index {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: #e2e8f0;
+    color: #0f172a;
+    font-weight: 700;
+    font-size: 0.9rem;
+}
+
+.stepper__label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-align: center;
+}
+
+.stepper__step--active {
+    color: #2563eb;
+}
+
+.stepper__step--active .stepper__index {
+    background: #2563eb;
+    color: #ffffff;
+}
+
+.stepper__step--done {
+    color: #16a34a;
+}
+
+.stepper__step--done .stepper__index {
+    background: #16a34a;
+    color: #ffffff;
+}
+
+.wizard__body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.wizard__step-title {
+    margin: 0;
+}
+
+.wizard__hint {
+    margin: 0;
+    color: #334155;
+}
+
+.wizard__actions {
+    display: flex;
+    gap: 12px;
+}
+
+.wizard__actions .button {
+    flex: 1 1 0;
+}
+
+/* Reports (M8 -- real shell) */
+
+.reports__header {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.reports__header h1 {
+    margin: 0;
+}
+
+.reports__subtitle {
+    margin: 0;
+    color: #334155;
+}
+
+.reports__state {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 16px;
+    border-radius: 8px;
+    background: #f1f5f9;
+    color: #0f172a;
+}
+
+.reports__state p {
+    margin: 0;
+}
+
+.reports__state--error {
+    background: #fee2e2;
+    color: #7f1d1d;
+}
+
+.reports__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.reports__item {
+    padding: 16px;
+    border-radius: 8px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+}
+
+.reports__item-description {
+    color: #0f172a;
 }

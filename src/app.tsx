@@ -1,57 +1,45 @@
 import "./app.css";
 import { useEffect, useState } from "react";
-import { MockCamera } from "./capture/MockCamera.tsx";
-import { useMockAudio } from "./capture/useMockAudio.ts";
-import { getMockPosition } from "./capture/location.ts";
-import { send } from "./send.tsx";
+import { Home } from "./pages/Home.tsx";
+import { NewReport } from "./pages/NewReport.tsx";
+import { Reports } from "./pages/Reports.tsx";
 
-const version = "seed";
-const welcome = `[Nagrywam] Kliknij, aby wysłać zdjęcie z audio i pozycją [${version}]`;
+type Route = "home" | "new" | "reports";
 
-export function App() {
-  const audio = useMockAudio();
-  const [label, setLabel] = useState(welcome);
+function normalize(hash: string): Route {
+  if (hash === "#/new") {
+    return "new";
+  }
+  if (hash === "#/reports") {
+    return "reports";
+  }
+  return "home";
+}
+
+/**
+ * Minimal hash router: `#/` → Home, `#/new` → report wizard, `#/reports` →
+ * reports list. Any other hash falls back to Home.
+ */
+function useHashRoute(): Route {
+  const [hash, setHash] = useState(() => window.location.hash);
 
   useEffect(() => {
-    audio.start();
-  }, [audio.start]);
+    const onChange = () => setHash(window.location.hash);
+    window.addEventListener("hashchange", onChange);
+    return () => window.removeEventListener("hashchange", onChange);
+  }, []);
 
-  function submit(photo: HTMLCanvasElement, voice: Blob) {
-    setLabel("Wysyłam...");
-    photo.toBlob((image) => {
-      const gps = getMockPosition();
-      send({ voice, image, gps }).then((txt) => setLabel(txt));
-    }, "image/png");
-    audio.start();
+  return normalize(hash);
+}
+
+export function App() {
+  const route = useHashRoute();
+
+  if (route === "new") {
+    return <NewReport />;
   }
-
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateRows: "1fr",
-        width: "100vw",
-        height: "100vh",
-      }}
-    >
-      <MockCamera
-        onCapture={(photo) => audio.stop((voice) => submit(photo, voice))}
-      />
-      <div
-        style={{
-          position: "absolute",
-          bottom: "1cm",
-          left: "50%",
-          transform: "translate(-50%, 0)",
-          pointerEvents: "none",
-          background: "white",
-          opacity: 0.7,
-          padding: 8,
-          borderRadius: 10,
-        }}
-      >
-        {label}
-      </div>
-    </div>
-  );
+  if (route === "reports") {
+    return <Reports />;
+  }
+  return <Home />;
 }

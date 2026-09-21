@@ -18,3 +18,6 @@ _Recurring walls/gotchas and how to get past them. One bullet each._
   critic's verdict as JSON`, `No task/goal, plan, or actor output`, or `need more steps`). Treat any
   reply that is not a single strict-JSON `{approved, blocking_issues, cosmetic_issues, notes}` object
   as "not reviewed"; always include the goal + plan + last actor output when invoking a reviewer.
+- The seed's `src/app.spec.tsx` smoke test pinned the seed's capture-screen copy; a UI milestone that
+  replaces that copy (M8 → Home) makes it fail legitimately. It is a test-owned file — rewrite it to
+  pin the new flow rather than leaving it red or touching production code.

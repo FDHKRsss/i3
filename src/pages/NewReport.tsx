@@ -1,10 +1,7 @@
 import { useCallback, useState } from "react";
 import "../app.css";
-import { MockCamera } from "../capture/MockCamera.tsx";
-import {
-  makePlaceholderImages,
-  type CapturedImages,
-} from "../capture/image.ts";
+import { Camera } from "../capture/Camera.tsx";
+import { type CapturedImages } from "../capture/image.ts";
 
 const STEPS = [
   { id: "camera", label: "Aparat" },
@@ -24,11 +21,11 @@ const STEP_HINT: Record<StepId, string> = {
 
 /**
  * Report wizard. A step indicator drives the four-step flow
- * camera → location → description → review. This milestone (M9 -- stub) fills
- * in the camera step: it reuses the canvas `MockCamera`, pushes a placeholder
- * photo + thumbnail Blob into the wizard state on capture, and exposes
- * "Zrób ponownie" (retake) / "Dalej" (continue) buttons. Location, description
- * and review bodies are filled in by M10–M12.
+ * camera → location → description → review. The camera step (M9 -- real) uses
+ * the real `getUserMedia` camera with a `MockCamera` fallback and pushes the
+ * compressed full photo + thumbnail into the wizard state on capture; it also
+ * exposes "Zrób ponownie" (retake) / "Dalej" (continue) buttons. Location,
+ * description and review bodies are filled in by M10–M12.
  */
 export function NewReport() {
   const [stepIndex, setStepIndex] = useState(0);
@@ -45,8 +42,8 @@ export function NewReport() {
     setStepIndex((i) => Math.min(total - 1, i + 1));
   }, [total]);
 
-  const handleCapture = useCallback(() => {
-    setImages(makePlaceholderImages());
+  const handleCapture = useCallback((images: CapturedImages) => {
+    setImages(images);
   }, []);
 
   const handleRetake = useCallback(() => {
@@ -89,7 +86,7 @@ export function NewReport() {
             <p className="wizard__hint">{STEP_HINT.camera}</p>
             {images === null ? (
               <div className="camera-step__viewfinder">
-                <MockCamera onCapture={handleCapture} />
+                <Camera onCapture={handleCapture} />
               </div>
             ) : (
               <p className="camera-step__captured" role="status">

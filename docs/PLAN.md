@@ -103,7 +103,7 @@ Pass 2 = replace each stub with the real implementation.
 - [x] M8 -- real   Real copy (PL), wired navigation, step indicator in the wizard, reports page shell with empty/error states. No placeholder text left.
 
 - [x] M9 -- stub   **Camera step.** Reuse the canvas mock to push a placeholder photo + thumbnail Blob into the wizard state; "Retake"/"Continue" buttons.
-- [ ] M9 -- real   **Camera step.** Real `getUserMedia({video:{facingMode:'environment'}})` live preview + shutter; canvas downscale → compressed JPEG (≤1280 px) + thumbnail (≤360 px); permission/error fallback to the mock; stop tracks on unmount.
+- [x] M9 -- real   **Camera step.** Real `getUserMedia({video:{facingMode:'environment'}})` live preview + shutter; canvas downscale → compressed JPEG (≤1280 px) + thumbnail (≤360 px); permission/error fallback to the mock; stop tracks on unmount.
 
 - [ ] M10 -- stub  **Location step.** Mock GPS + grey placeholder map with a pin; two-column layout (coordinates | map).
 - [ ] M10 -- real  **Location step.** `navigator.geolocation.getCurrentPosition` (high accuracy, timeout), error + retry + manual lat/lon fallback; `MapPin` (OSM tile grid + centered pin); two columns (left: coordinates + address + accuracy, right: map); reverse-geocode via `geo.ts` (mock default, `nominatim` opt-in).
@@ -131,12 +131,13 @@ Pass 2 = replace each stub with the real implementation.
   4-step indicator with `aria-current` tracking and working back/next
   navigation; the Reports page renders loading / error / empty / ready states
   from `GET /api/reports`.
-- **M9 -- stub — done (this turn).** The camera step reuses the canvas
-  `MockCamera` and, on capture, pushes a placeholder photo + thumbnail JPEG
-  Blob pair (`makePlaceholderImages()`) into the wizard state. "Dalej" is gated
-  until a photo is captured and "Zrób ponownie" resets the capture; navigating
-  back keeps the captured photo. `npm test` (73 passed) and
-  `npm run typecheck` are green.
+- **M9 -- real — done (this turn).** The camera step now uses the real
+  `getUserMedia({ video: { facingMode: "environment" }, audio: false })` camera
+  with a live `<video>` preview and a shutter gated on the live state.
+  `compressToImages()` downscales the captured frame to a JPEG **full**
+  (≤1280 px @ 0.85) + **thumbnail** (≤360 px @ 0.72) pair; camera
+  unavailability / permission denial falls back to `MockCamera`, and tracks are
+  stopped on unmount. `npm test` (85 passed) + `npm run typecheck` are green.
 - Next: **M10 -- stub** — mock GPS + grey placeholder map with a pin and the
   two-column coordinates | map layout, then continue the remaining Pass 1
   stubs (M11–M15).

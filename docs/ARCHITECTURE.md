@@ -52,9 +52,28 @@ Key decisions vs. the previous seed:
   and tracks are stopped on unmount. Covered by `src/capture/Camera.spec.tsx`,
   `src/capture/image.real.spec.ts`, `src/capture/image.spec.ts` and
   `src/pages/NewReport.spec.tsx`.
-- **M10–M15 — not implemented yet.** Location + map/pin, description
-  generation, review/submit, full reports-list rows, the `BYTEA`-backed DB/API,
-  and the final compose/tests/docs pass remain open (stubs first, then real).
+- **M10 (Location step) — real done.** The wizard's location step now mounts
+  the real `navigator.geolocation` wrapper (`src/capture/location.ts`): high
+  accuracy + 10 s timeout + `maximumAge: 0`, a typed `GeolocationError` mapping
+  (permission-denied / position-unavailable / timeout / unsupported / unknown),
+  a retry button and a validated manual lat/lon fallback. On capture it renders
+  the required two-column screen — left: coordinates + reverse-geocoded address
+  + accuracy, right: `MapPin` (3×3 OSM tile grid + centered pin from
+  `src/map/`). Reverse-geocoding is `src/capture/geo.ts` (deterministic mock
+  default; `nominatim` opt-in). Covered by `src/capture/location.spec.ts`,
+  `src/capture/geo.spec.ts`, `src/map/MapPin.spec.tsx`, `src/map/tiles.spec.ts`
+  and `src/pages/NewReport.spec.tsx`.
+- **M11 (Description step) — real done.** The wizard's description step now
+  mounts `src/description.ts` → `generateDescription()`, a deterministic,
+  A.I.-style generator: it always starts with the fixed default
+  `"test default description A.I. generated based on the incident picture"` and
+  appends short annotations for the captured photo / coordinates / time. The
+  step renders an editable textarea plus a "Generate" button that fills it, and
+  gates "Dalej" until the text is non-empty. No network or API key is involved
+  (a real LLM remains a marked later swap). Covered by
+  `src/description.spec.ts` and `src/pages/NewReport.spec.tsx`.
+- **M12–M15 — not implemented yet.** Review/submit, full reports-list rows,
+  the `BYTEA`-backed DB/API, and the final compose/tests/docs pass remain open.
 
 
 ## Source & git
@@ -95,9 +114,11 @@ i3_ref/
 │  │  ├─ Camera.tsx            # real getUserMedia camera + shutter + fallback
 │  │  ├─ MockCamera.tsx        # kept as the permission-denied/headless fallback
 │  │  ├─ location.ts           # navigator.geolocation + manual fallback
+│  │  ├─ geo.ts                # reverse-geocode (mock default; nominatim opt-in)
 │  │  └─ image.ts              # canvas downscale/compress → full + thumbnail blobs
 │  ├─ map/
-│  │  └─ MapPin.tsx            # OSM tile grid + centered pin (interactive + thumb sizes)
+│  │  ├─ MapPin.tsx            # OSM tile grid + centered pin (interactive + thumb sizes)
+│  │  └─ tiles.ts              # slippy-map tile math (tileCoords / wrapTileX / clampTileY)
 │  ├─ description.ts           # generateDescription() (deterministic A.I.-style text)
 │  ├─ send.tsx                 # multipart POST (image, thumbnail, lat, lon, description)
 │  └─ ...
@@ -105,7 +126,7 @@ i3_ref/
 │  ├─ index.ts                 # routes incl. /api/reports/:id/image|thumbnail
 │  ├─ report.ts                # multipart parse + validation + orchestration
 │  ├─ db.ts                    # insert/list/getImage/getThumbnail/ping
-│  └─ geo.ts                   # reverse-geocode (mock default; nominatim opt-in)
+│  └─ geo.ts                   # backend mock geocode provider (seed; swapped under M14)
 ├─ db/
 │  └─ init.sql                 # reports table (description + image/thumbnail BYTEA)
 ├─ Dockerfile                  # multi-stage: build frontend+server → runtime

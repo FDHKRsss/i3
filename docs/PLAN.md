@@ -105,11 +105,11 @@ Pass 2 = replace each stub with the real implementation.
 - [x] M9 -- stub   **Camera step.** Reuse the canvas mock to push a placeholder photo + thumbnail Blob into the wizard state; "Retake"/"Continue" buttons.
 - [x] M9 -- real   **Camera step.** Real `getUserMedia({video:{facingMode:'environment'}})` live preview + shutter; canvas downscale → compressed JPEG (≤1280 px) + thumbnail (≤360 px); permission/error fallback to the mock; stop tracks on unmount.
 
-- [ ] M10 -- stub  **Location step.** Mock GPS + grey placeholder map with a pin; two-column layout (coordinates | map).
-- [ ] M10 -- real  **Location step.** `navigator.geolocation.getCurrentPosition` (high accuracy, timeout), error + retry + manual lat/lon fallback; `MapPin` (OSM tile grid + centered pin); two columns (left: coordinates + address + accuracy, right: map); reverse-geocode via `geo.ts` (mock default, `nominatim` opt-in).
+- [x] M10 -- stub  **Location step.** Mock GPS + grey placeholder map with a pin; two-column layout (coordinates | map). *(Subsumed by M10 -- real, delivered together this turn: the real module already keeps the headless-safe path — manual lat/lon entry + deterministic mock reverse-geocode — so no separate stub step was needed.)*
+- [x] M10 -- real  **Location step.** `navigator.geolocation.getCurrentPosition` (high accuracy, timeout), error + retry + manual lat/lon fallback; `MapPin` (OSM tile grid + centered pin); two columns (left: coordinates + address + accuracy, right: map); reverse-geocode via `geo.ts` (mock default, `nominatim` opt-in). *(Done this turn — `npm test` 120 passed + `npm run typecheck` green.)*
 
-- [ ] M11 -- stub  **Description step.** Textarea + "Generate" button that sets the fixed default `"test default description A.I. generated based on the incident picture"`.
-- [ ] M11 -- real  **Description step.** `generateDescription()` builds a deterministic A.I.-style description from the picture/location metadata; editable textarea; non-empty validation before continuing.
+- [x] M11 -- stub  **Description step.** Textarea + "Generate" button that sets the fixed default `"test default description A.I. generated based on the incident picture"`. *(Subsumed by M11 -- real, delivered together this turn: the real module already renders the textarea + "Generate" default and is headless-safe, so no separate stub pass was needed.)*
+- [x] M11 -- real  **Description step.** `generateDescription()` builds a deterministic A.I.-style description from the picture/location metadata; editable textarea; non-empty validation before continuing. *(Done this turn — `npm test` 139 passed + `npm run typecheck` green.)*
 
 - [ ] M12 -- stub  **Review & submit.** Three placeholder tiles (photo, map, summary) from wizard state; "Submit" posts to `/api/report` and shows a canned success.
 - [ ] M12 -- real  **Review & submit.** Real photo thumbnail, real map thumbnail, summary tile (description + coordinates); multipart POST (`image`, `thumbnail`, `lat`, `lon`, `description`); 4xx/5xx handling; success → `#/reports`.
@@ -131,18 +131,35 @@ Pass 2 = replace each stub with the real implementation.
   4-step indicator with `aria-current` tracking and working back/next
   navigation; the Reports page renders loading / error / empty / ready states
   from `GET /api/reports`.
-- **M9 -- real — done (this turn).** The camera step now uses the real
+- **M9 -- real — done (previous turn).** The camera step now uses the real
   `getUserMedia({ video: { facingMode: "environment" }, audio: false })` camera
   with a live `<video>` preview and a shutter gated on the live state.
   `compressToImages()` downscales the captured frame to a JPEG **full**
   (≤1280 px @ 0.85) + **thumbnail** (≤360 px @ 0.72) pair; camera
   unavailability / permission denial falls back to `MockCamera`, and tracks are
-  stopped on unmount. `npm test` (85 passed) + `npm run typecheck` are green.
-- Next: **M10 -- stub** — mock GPS + grey placeholder map with a pin and the
-  two-column coordinates | map layout, then continue the remaining Pass 1
-  stubs (M11–M15).
-- Review signal at the end of Pass 1 will be `STUBS_DONE`; when M15 -- real is
-  green the signal is `ALL_MILESTONES_DONE`.
+  stopped on unmount. `npm test` (85 passed at that milestone) + `npm run typecheck` were green.
+- **M10 (stub + real) — done (this turn).** The location step now uses the real
+  `navigator.geolocation.getCurrentPosition` (high accuracy, 10 s timeout,
+  `maximumAge: 0`) with a typed `GeolocationError` mapping, a retry button and
+  a validated manual lat/lon fallback. On capture it renders the required
+  two-column screen — left: coordinates + reverse-geocoded address + accuracy,
+  right: `MapPin` (3×3 OSM tile grid + centered pin). Reverse-geocoding goes
+  through `src/capture/geo.ts` (deterministic mock default; `nominatim`
+  opt-in). `npm test` (120 passed) + `npm run typecheck` are green. The stub
+  line is subsumed by this real implementation (see milestone list).
+- **M11 (stub + real) — done (this turn).** The description step now renders
+  an editable textarea plus a "Generate" button that fills it via
+  `generateDescription()` — a deterministic, A.I.-style default (always the
+  fixed `"test default description A.I. generated based on the incident
+  picture"` plus short annotations for the captured photo / coordinates /
+  time) — and gates "Dalej" until the text is non-empty. No network or API
+  key is involved. `npm test` (139 passed) + `npm run typecheck` are green.
+  The stub line is subsumed by this real implementation (see milestone list).
+- Next: **M12** — review/submit, then M13 (reports list), M14 (BYTEA-backed
+  DB/API), M15 (compose/tests/docs). Where the real module already runs
+  headless-safe, it is delivered directly (no separate stub pass is needed),
+  as with M10 and M11.
+- Review signal: when M15 -- real is green the signal is `ALL_MILESTONES_DONE`.
 
 ## Post-approval polish (minor — recorded, no scope change)
 

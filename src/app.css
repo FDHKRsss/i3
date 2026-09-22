@@ -518,7 +518,7 @@
     font-size: 0.65rem;
 }
 
-/* Reports (M8 -- real shell) */
+/* Reports (M13 -- real) */
 
 .reports__header {
     display: flex;
@@ -565,12 +565,86 @@
 }
 
 .reports__item {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
     padding: 16px;
     border-radius: 8px;
     background: #f8fafc;
     border: 1px solid #e2e8f0;
 }
 
+.reports__item-tiles {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    align-items: start;
+}
+
+.reports__item-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.reports__item-tile-title {
+    margin: 0;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #475569;
+}
+
+.reports__item-thumb {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 8px;
+    background: #e2e8f0;
+}
+
+.reports__item-map .map-pin {
+    aspect-ratio: 1 / 1;
+}
+
+.reports__item-missing {
+    margin: 0;
+    color: #64748b;
+    font-size: 0.8rem;
+}
+
+.reports__item-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
 .reports__item-description {
+    margin: 0;
     color: #0f172a;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+.reports__item-coords {
+    margin: 0;
+    color: #334155;
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.reports__item-address {
+    margin: 0;
+    color: #475569;
+    font-size: 0.8rem;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+}
+
+.reports__item-time {
+    margin: 0;
+    color: #64748b;
+    font-size: 0.75rem;
 }

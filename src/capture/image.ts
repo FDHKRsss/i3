@@ -110,3 +110,30 @@ export async function compressToImages(
   const thumbnail = await downscaleToJpeg(source, MAX_THUMB_EDGE, 0.72);
   return { full, thumbnail };
 }
+
+/**
+ * Read a Blob as a `data:` URL so it can be displayed in an `<img>`.
+ *
+ * The review step (M12) needs to show the captured photo thumbnail. jsdom does
+ * not implement `URL.createObjectURL`, so we use `FileReader` (available in
+ * both jsdom and browsers) and resolve `null` when the Blob cannot be read,
+ * keeping the render headless-safe. A data URL also needs no later
+ * `revokeObjectURL` bookkeeping.
+ */
+export function blobToDataUrl(blob: Blob): Promise<string | null> {
+  return new Promise((resolve) => {
+    if (typeof FileReader === "undefined") {
+      resolve(null);
+      return;
+    }
+    try {
+      const reader = new FileReader();
+      reader.onload = () =>
+        resolve(typeof reader.result === "string" ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    } catch {
+      resolve(null);
+    }
+  });
+}

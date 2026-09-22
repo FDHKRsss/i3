@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import "../app.css";
 import { Camera } from "../capture/Camera.tsx";
-import { type CapturedImages } from "../capture/image.ts";
+import { blobToDataUrl, type CapturedImages } from "../capture/image.ts";
 import { reverseGeocode } from "../capture/geo.ts";
 import {
   GeolocationError,
@@ -12,6 +12,7 @@ import {
 } from "../capture/location.ts";
 import { MapPin } from "../map/MapPin.tsx";
 import { generateDescription } from "../description.ts";
+import { sendReport } from "../send.tsx";
 
 const STEPS = [
   { id: "camera", label: "Aparat" },
@@ -266,6 +267,145 @@ function DescriptionStep({
   );
 }
 
+type SubmitStatus = "idle" | "submitting" | "error";
+
+interface ReviewStepProps {
+  images: CapturedImages;
+  position: GpsPosition | null;
+  address: string | null;
+  description: string;
+}
+
+/**
+ * Review step (M12 -- real). Renders the three required side-by-side tiles —
+ * **photo thumbnail**, **map + pin thumbnail**, **summary** (description +
+ * coordinates + address) — and a "Wyślij" submit that POSTs the multipart
+ * payload (`image`, `thumbnail`, `lat`, `lon`, `description`) to `/api/report`.
+ * On success it redirects to `#/reports`; on a network failure / 4xx / 5xx it
+ * shows a short, non-leaky error and lets the user retry.
+ */
+function ReviewStep({
+  images,
+  position,
+  address,
+  description,
+}: ReviewStepProps) {
+  const [status, setStatus] = useState<SubmitStatus>("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void blobToDataUrl(images.thumbnail).then((url) => {
+      if (!cancelled) {
+        setPhotoUrl(url);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [images.thumbnail]);
+
+  const handleSubmit = useCallback(async () => {
+    if (status === "submitting") {
+      return;
+    }
+    setStatus("submitting");
+    setErrorMessage(null);
+    const result = await sendReport({
+      image: images.full,
+      thumbnail: images.thumbnail,
+      lat: position?.lat ?? null,
+      lon: position?.lon ?? null,
+      description,
+    });
+    if (result.ok) {
+      window.location.hash = "#/reports";
+      return;
+    }
+    setErrorMessage(result.message);
+    setStatus("error");
+  }, [images.full, images.thumbnail, position, description, status]);
+
+  return (
+    <div className="review-step">
+      <p className="wizard__hint">{STEP_HINT.review}</p>
+
+      <div className="review-step__tiles">
+        <section className="review-step__tile" aria-label="Zdjęcie">
+          <h3 className="review-step__tile-title">Zdjęcie</h3>
+          {photoUrl ? (
+            <img
+              className="review-step__photo"
+              src={photoUrl}
+              alt="Zgłoszone zdjęcie"
+            />
+          ) : (
+            <p
+              className="review-step__missing"
+              role="img"
+              aria-label="Podgląd zdjęcia niedostępny"
+            >
+              Podgląd niedostępny
+            </p>
+          )}
+        </section>
+
+        <section className="review-step__tile" aria-label="Mapa">
+          <h3 className="review-step__tile-title">Mapa</h3>
+          {position ? (
+            <MapPin lat={position.lat} lon={position.lon} />
+          ) : (
+            <p className="review-step__missing">Brak lokalizacji</p>
+          )}
+        </section>
+
+        <section className="review-step__tile" aria-label="Podsumowanie">
+          <h3 className="review-step__tile-title">Podsumowanie</h3>
+          <p className="review-step__description">{description}</p>
+          {position && (
+            <dl className="review-step__coords">
+              <div className="review-step__coord">
+                <dt>Szerokość</dt>
+                <dd>{position.lat.toFixed(5)}</dd>
+              </div>
+              <div className="review-step__coord">
+                <dt>Długość</dt>
+                <dd>{position.lon.toFixed(5)}</dd>
+              </div>
+            </dl>
+          )}
+          {address?.trim() ? (
+            <p className="review-step__address">{address}</p>
+          ) : null}
+        </section>
+      </div>
+
+      {status === "error" && (
+        <div className="review-step__error" role="alert">
+          <p>{errorMessage}</p>
+          <button
+            type="button"
+            className="button button--secondary"
+            onClick={() => void handleSubmit()}
+          >
+            Spróbuj ponownie
+          </button>
+        </div>
+      )}
+
+      <button
+        type="button"
+        className="button button--primary review-step__submit"
+        disabled={status === "submitting"}
+        onClick={() => void handleSubmit()}
+      >
+        {status === "submitting" ? "Wysyłanie…" : "Wyślij"}
+      </button>
+    </div>
+  );
+}
+
 /**
  * Report wizard. A step indicator drives the four-step flow
  * camera → location → description → review. The camera step (M9 -- real) uses
@@ -274,7 +414,8 @@ function DescriptionStep({
  * location step (M10 -- real) captures real GPS and renders the two-column
  * coordinates | map+pin screen. The description step (M11 -- real) offers an
  * editable textarea plus a "Generate" default and gates on non-empty text. The
- * review body is filled in by M12.
+ * review step (M12 -- real) renders three side-by-side tiles and submits the
+ * report to the backend.
  */
 export function NewReport() {
   const [stepIndex, setStepIndex] = useState(0);
@@ -384,6 +525,13 @@ export function NewReport() {
             hasImage={images !== null}
             position={position}
             onChange={handleDescriptionChange}
+          />
+        ) : images !== null ? (
+          <ReviewStep
+            images={images}
+            position={position}
+            address={address}
+            description={description}
           />
         ) : (
           <p className="wizard__hint">{STEP_HINT[current.id]}</p>

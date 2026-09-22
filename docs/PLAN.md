@@ -111,8 +111,8 @@ Pass 2 = replace each stub with the real implementation.
 - [x] M11 -- stub  **Description step.** Textarea + "Generate" button that sets the fixed default `"test default description A.I. generated based on the incident picture"`. *(Subsumed by M11 -- real, delivered together this turn: the real module already renders the textarea + "Generate" default and is headless-safe, so no separate stub pass was needed.)*
 - [x] M11 -- real  **Description step.** `generateDescription()` builds a deterministic A.I.-style description from the picture/location metadata; editable textarea; non-empty validation before continuing. *(Done this turn — `npm test` 139 passed + `npm run typecheck` green.)*
 
-- [ ] M12 -- stub  **Review & submit.** Three placeholder tiles (photo, map, summary) from wizard state; "Submit" posts to `/api/report` and shows a canned success.
-- [ ] M12 -- real  **Review & submit.** Real photo thumbnail, real map thumbnail, summary tile (description + coordinates); multipart POST (`image`, `thumbnail`, `lat`, `lon`, `description`); 4xx/5xx handling; success → `#/reports`.
+- [x] M12 -- stub  **Review & submit.** Three placeholder tiles (photo, map, summary) from wizard state; "Submit" posts to `/api/report` and shows a canned success. *(Subsumed by M12 -- real, delivered directly this turn: the real review step already renders the three tiles and is headless-safe, so no separate stub pass was needed.)*
+- [x] M12 -- real  **Review & submit.** Real photo thumbnail, real map thumbnail, summary tile (description + coordinates); multipart POST (`image`, `thumbnail`, `lat`, `lon`, `description`); 4xx/5xx handling; success → `#/reports`. *(Done this turn — `npm test` 152 passed + `npm run typecheck` green.)*
 
 - [ ] M13 -- stub  **Reports list.** `/api/reports` returns canned rows; list renders placeholders.
 - [ ] M13 -- real  **Reports list.** Fetch `/api/reports`; render each report with photo thumbnail, map thumbnail, description, coordinates, timestamp; newest first; empty/error states.
@@ -155,18 +155,28 @@ Pass 2 = replace each stub with the real implementation.
   time) — and gates "Dalej" until the text is non-empty. No network or API
   key is involved. `npm test` (139 passed) + `npm run typecheck` are green.
   The stub line is subsumed by this real implementation (see milestone list).
-- Next: **M12** — review/submit, then M13 (reports list), M14 (BYTEA-backed
-  DB/API), M15 (compose/tests/docs). Where the real module already runs
-  headless-safe, it is delivered directly (no separate stub pass is needed),
-  as with M10 and M11.
+- **M12 (stub + real) — done (this turn).** The review step now renders the
+  three required side-by-side tiles — **photo thumbnail**, **map + pin
+  thumbnail**, **summary** (description + coordinates + address) — and a
+  "Wyślij" submit that POSTs the multipart payload (`image`, `thumbnail`,
+  `lat`, `lon`, `description`) to `/api/report` via `src/send.tsx`
+  (`sendReport`). On success it redirects to `#/reports`; on a network failure
+  / 4xx / 5xx it shows a short, non-leaky error with a retry. The stub line is
+  subsumed by this real implementation (see milestone list). `npm test`
+  (152 passed) + `npm run typecheck` are green.
+- Next: **M13** — reports list, then M14 (BYTEA-backed DB/API), M15
+  (compose/tests/docs). Where the real module already runs headless-safe, it
+  is delivered directly (no separate stub pass is needed), as with M10, M11
+  and M12.
 - **M12/M13 → M14 contract dependency.** M12 (submit) and M13 (reports list)
   are frontend-first and target the **M14** backend contract:
   `POST /api/report` accepts `image`/`thumbnail`/`lat`/`lon`/`description`,
   and `GET /api/reports` returns `description`, `created_at` and
-  `thumbnailUrl`. Deliver M12/M13 with mocked-`fetch` tests and do **not**
-  rewrite the backend as part of them — the seed backend still expects
-  `voice` and returns the old `audio_path`/`image_path` row shape until M14
-  lands, so a real submit/list against it will fail until then.
+  `thumbnailUrl`. M12 is delivered with mocked-`fetch` tests; M13 will be
+  delivered the same way. Do **not** rewrite the backend as part of them — the
+  seed backend still expects `voice` and returns the old
+  `audio_path`/`image_path` row shape until M14 lands, so a real submit/list
+  against it will fail until then.
 - Review signal: when M15 -- real is green the signal is `ALL_MILESTONES_DONE`.
 
 ## Post-approval polish (minor — recorded, no scope change)

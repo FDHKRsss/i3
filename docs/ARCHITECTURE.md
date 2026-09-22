@@ -72,10 +72,19 @@ Key decisions vs. the previous seed:
   gates "Dalej" until the text is non-empty. No network or API key is involved
   (a real LLM remains a marked later swap). Covered by
   `src/description.spec.ts` and `src/pages/NewReport.spec.tsx`.
-- **M12–M15 — not implemented yet.** Review/submit, full reports-list rows,
-  the `BYTEA`-backed DB/API, and the final compose/tests/docs pass remain open.
-  (M12/M13 are frontend-first and target the M14 backend contract; the seed
-  backend still expects the old `voice`/`audio_path` shape until M14 lands.)
+- **M12 (Review & submit) — real done.** The review step renders the three
+  required side-by-side tiles — **photo thumbnail**, **map + pin thumbnail**,
+  **summary** (description + coordinates + address) — and submits the report
+  via `src/send.tsx` (`sendReport`): a multipart POST (`image`, `thumbnail`,
+  `lat`, `lon`, `description`) to `/api/report`. On success it redirects to
+  `#/reports`; a network failure / 4xx / 5xx shows a short, non-leaky error
+  with a retry. Covered by `src/pages/NewReport.review.spec.tsx` and
+  `tests/send.spec.ts`.
+- **M13–M15 — not implemented yet.** Full reports-list rows (M13), the
+  `BYTEA`-backed DB/API (M14), and the final compose/tests/docs pass (M15)
+  remain open. (M12/M13 are frontend-first and target the M14 backend contract;
+  the seed backend still expects the old `voice`/`audio_path` shape until M14
+  lands.)
 
 
 ## Source & git

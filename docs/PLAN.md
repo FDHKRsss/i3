@@ -117,11 +117,11 @@ Pass 2 = replace each stub with the real implementation.
 - [x] M13 -- stub  **Reports list.** `/api/reports` returns canned rows; list renders placeholders. *(Subsumed by M8 -- real's shell + M13 -- real, delivered together this turn: the shell already fetched `/api/reports` and rendered loading/error/empty/ready states, so no separate stub pass was needed.)*
 - [x] M13 -- real  **Reports list.** Fetch `/api/reports`; render each report with photo thumbnail, map thumbnail, description, coordinates, timestamp; newest first; empty/error states. *(Done this turn — `npm test` 160 passed + `npm run typecheck` green.)*
 
-- [ ] M14 -- stub  **Backend & DB.** Endpoints `/api/reports`, `/api/reports/:id/image`, `/api/reports/:id/thumbnail` with canned data; in-memory store with the new shape.
-- [ ] M14 -- real  **Backend & DB.** `db/init.sql` new `reports` table (drop audio, add `description`, `image BYTEA`, `thumbnail BYTEA`); `db.ts` insert/list/get image/get thumbnail; `report.ts` multipart parse (`image` required, `thumbnail` optional, `lat`, `lon`, `description`) + validation; image-serving routes; health.
+- [x] M14 -- stub  **Backend & DB.** Endpoints `/api/reports`, `/api/reports/:id/image`, `/api/reports/:id/thumbnail` with canned data; in-memory store with the new shape. *(Subsumed by M14 -- real, delivered together this turn: the real `db.ts`/`report.ts`/`index.ts` already implement the BYTEA contract end-to-end and are covered by tests, so no separate stub pass was needed.)*
+- [x] M14 -- real  **Backend & DB.** `db/init.sql` new `reports` table (drop audio, add `description`, `image BYTEA`, `thumbnail BYTEA`); `db.ts` insert/list/get image/get thumbnail; `report.ts` multipart parse (`image` required, `thumbnail` optional, `lat`, `lon`, `description`) + validation; image-serving routes; health. *(Done this turn — `npm test` 177 passed + `npm run typecheck` green.)*
 
-- [ ] M15 -- stub  **Compose, tests & docs.** Compose still boots `app`+`db`; smoke tests pass with stubs; RUNBOOK placeholder.
-- [ ] M15 -- real  **Compose, tests & docs.** Compose drops the `uploads` volume (bytea storage), keeps `pgdata`, `APP_PORT` env; documents the HTTPS reverse-proxy requirement for mobile camera/GPS; unit + frontend tests for description generator, map tile math, geo, db row mapping, report validation, endpoints, Home/wizard/reports; RUNBOOK updated; `npm test` + `npm run typecheck` green.
+- [x] M15 -- stub  **Compose, tests & docs.** Compose still boots `app`+`db`; smoke tests pass with stubs; RUNBOOK placeholder.
+- [x] M15 -- real  **Compose, tests & docs.** Compose drops the `uploads` volume and the `UPLOAD_DIR` env (bytea storage), removes the now-dead `server/store.ts` + `tests/store.spec.ts`, keeps `pgdata` + `APP_PORT` env; documents the HTTPS reverse-proxy requirement for mobile camera/GPS; unit + frontend tests for description generator, map tile math, geo, db row mapping, report validation, endpoints, Home/wizard/reports; RUNBOOK rewritten to the real photo/GPS/description flow; `tests/runbook.spec.ts` re-pinned to the new compose/runbook/schema/contract facts (no `uploads`/`UPLOAD_DIR`/`audio_path`/`image_path`) and `tests/docs.spec.ts` updated to the M15 state; `npm test` + `npm run typecheck` green.
 
 ## Current status
 
@@ -173,19 +173,33 @@ Pass 2 = replace each stub with the real implementation.
   `created_at`). `npm test` (160 passed) + `npm run typecheck` are green. The
   stub line is subsumed by M8 -- real's shell + this real list (see milestone
   list).
-- Next: **M14** (BYTEA-backed DB/API) then M15 (compose/tests/docs). M12 and
-  M13 are delivered frontend-first against the M14 contract, so the backend is
-  the critical remaining piece — a real `POST /api/report` / `GET /api/reports`
-  against the seed backend still fails until M14 lands.
-- **M12/M13 → M14 contract dependency.** M12 (submit) and M13 (reports list)
-  are delivered frontend-first against the **M14** backend contract:
-  `POST /api/report` accepts `image`/`thumbnail`/`lat`/`lon`/`description`,
-  and `GET /api/reports` returns `description`, `created_at` and
-  `thumbnailUrl`. Both keep mocked-`fetch` tests. Do **not** rewrite the
-  backend as part of them — the seed backend still expects `voice` and returns
-  the old `audio_path`/`image_path` row shape until M14 lands, so a real
-  submit/list against it still fails until then.
-- Review signal: when M15 -- real is green the signal is `ALL_MILESTONES_DONE`.
+- **M14 (stub + real) — done (this turn).** The backend is now BYTEA-backed
+  and implements the M12/M13 contract. `db/init.sql` defines the new `reports`
+  table (audio columns dropped; `description TEXT`, `image BYTEA` required,
+  `thumbnail BYTEA` optional); `db.ts` provides insert/list/getImage/
+  getThumbnail; `report.ts` parses multipart (`image` required, `thumbnail`
+  optional, `lat`/`lon` validated finite + in-range, `description`) and
+  reverse-geocodes via `geo.ts`; `index.ts` serves `GET
+  /api/reports/:id/image` and `/api/reports/:id/thumbnail` as `image/jpeg`,
+  keeps `GET /api/reports` metadata-only (returning `description`,
+  `created_at`, `thumbnailUrl`, `imageUrl`), and preserves `/health`. The old
+  `voice`/`audio_path` contract is gone. `npm test` (177 passed) + `npm run
+  typecheck` are green. The stub line is subsumed by this real implementation
+  (see milestone list).
+- **M12/M13 → M14 contract dependency — resolved.** M12 (submit) and M13
+  (reports list) were delivered frontend-first against the M14 backend contract
+  (`POST /api/report` accepts `image`/`thumbnail`/`lat`/`lon`/`description`;
+  `GET /api/reports` returns `description`, `created_at`, `thumbnailUrl`), and
+  that contract is now implemented server-side by M14 -- real.
+- **M15 (stub + real) — done.** The final compose/tests/docs pass shipped:
+  `docker-compose.yml` drops the `uploads` volume and the `UPLOAD_DIR` env
+  (BYTEA storage) and keeps `pgdata` + `APP_PORT`; the now-dead
+  `server/store.ts` and `tests/store.spec.ts` are removed; the HTTPS
+  reverse-proxy requirement for mobile camera/GPS is documented; the RUNBOOK
+  is rewritten to the real photo/GPS/description flow and
+  `tests/runbook.spec.ts` is re-pinned; and `tests/docs.spec.ts` is updated
+  to the M15 state. `npm test` + `npm run typecheck` are green.
+- Review signal: `ALL_MILESTONES_DONE`.
 
 ## Post-approval polish (minor — recorded, no scope change)
 

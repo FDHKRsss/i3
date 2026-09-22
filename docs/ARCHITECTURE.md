@@ -88,12 +88,26 @@ Key decisions vs. the previous seed:
   gracefully against the older seed backend rows (no `description` /
   `thumbnailUrl` / `imageUrl` / `created_at`). Covered by
   `src/pages/Reports.spec.tsx`.
-- **M14–M15 — not implemented yet.** The `BYTEA`-backed DB/API (M14) and the
-  final compose/tests/docs pass (M15) remain open. (M12/M13 are delivered
-  frontend-first and target the M14 backend contract; the seed backend still
-  expects the old `voice`/`audio_path` shape until M14 lands.)
-
-
+- **M14 (Backend & DB) — real done.** The backend is now BYTEA-backed and
+  implements the M12/M13 contract. `db/init.sql` defines the new `reports`
+  table (audio columns dropped; `description TEXT`, `image BYTEA` required,
+  `thumbnail BYTEA` optional); `db.ts` provides insert/list/getImage/
+  getThumbnail; `report.ts` parses multipart (`image` required, `thumbnail`
+  optional, `lat`/`lon` validated finite + in-range, `description`) and
+  reverse-geocodes via `geo.ts`; `index.ts` serves `GET
+  /api/reports/:id/image` and `/api/reports/:id/thumbnail` as `image/jpeg`,
+  keeps `GET /api/reports` metadata-only (returning `description`,
+  `created_at`, `thumbnailUrl`, `imageUrl`), and preserves `/health`. The old
+  `voice`/`audio_path` shape is gone. Covered by `tests/app.spec.ts` and
+  `tests/report.spec.ts`.
+- **M15 (Compose, tests & docs) — done.** The final compose/tests/docs pass
+  shipped: `docker-compose.yml` drops the `uploads` volume and the `UPLOAD_DIR`
+  env (BYTEA storage) and keeps `pgdata` + `APP_PORT`; the now-dead
+  `server/store.ts` + `tests/store.spec.ts` are removed (upload-volume
+  persistence is obsolete once `BYTEA` is the storage); the HTTPS
+  reverse-proxy requirement for mobile camera/GPS is documented in the
+  RUNBOOK; and `tests/runbook.spec.ts` / `tests/docs.spec.ts` are re-pinned to
+  the new compose / runbook / schema / contract facts.
 ## Source & git
 
 - `i3_ref/` is a local clone of `https://github.com/FDHKRsss/i3.git` (the repo
@@ -144,7 +158,7 @@ i3_ref/
 │  ├─ index.ts                 # routes incl. /api/reports/:id/image|thumbnail
 │  ├─ report.ts                # multipart parse + validation + orchestration
 │  ├─ db.ts                    # insert/list/getImage/getThumbnail/ping
-│  └─ geo.ts                   # backend mock geocode provider (seed; swapped under M14)
+│  └─ geo.ts                   # backend reverse-geocode provider (mock only; real provider is a later swap)
 ├─ db/
 │  └─ init.sql                 # reports table (description + image/thumbnail BYTEA)
 ├─ Dockerfile                  # multi-stage: build frontend+server → runtime

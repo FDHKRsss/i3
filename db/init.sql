@@ -3,9 +3,10 @@ CREATE TABLE IF NOT EXISTS reports (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   lat         DOUBLE PRECISION,
   lon         DOUBLE PRECISION,
-  audio_path  TEXT NOT NULL,
-  image_path  TEXT,
-  geo_desc    TEXT
+  geo_desc    TEXT,
+  description TEXT NOT NULL DEFAULT '',
+  image       BYTEA NOT NULL,
+  thumbnail   BYTEA
 );
 
 CREATE INDEX IF NOT EXISTS reports_created_at_idx

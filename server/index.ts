@@ -1,7 +1,12 @@
 import express from "express";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { listReports, ping } from "./db.js";
+import {
+  getReportImage,
+  getReportThumbnail,
+  listReports,
+  ping,
+} from "./db.js";
 import { handleReport, HttpError } from "./report.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -13,6 +18,9 @@ export const app = express();
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 app.get("/health", async (_req, res) => {
   const dbUp = await ping();
@@ -51,10 +59,61 @@ app.get("/api/reports", async (req, res) => {
     const raw = Number(req.query.limit);
     const limit = Math.min(Math.max(Number.isFinite(raw) ? raw : 50, 1), 100);
     const rows = await listReports(limit);
-    // `created_at` is an internal ordering detail; the public report shape
-    // does not expose it (matches the seed's earlier stub contract).
-    const publicRows = rows.map(({ created_at: _createdAt, ...report }) => report);
+    // Public contract: metadata only, plus URLs the client fetches the image
+    // bytes from. `created_at` is exposed (ISO string) so the list can sort
+    // and display the timestamp; the `image`/`thumbnail` BYTEA columns are
+    // never inlined into this payload.
+    const publicRows = rows.map((row) => ({
+      id: row.id,
+      created_at: row.created_at,
+      lat: row.lat,
+      lon: row.lon,
+      geo_desc: row.geo_desc,
+      description: row.description,
+      thumbnailUrl: `/api/reports/${row.id}/thumbnail`,
+      imageUrl: `/api/reports/${row.id}/image`,
+    }));
     res.json(publicRows);
+  } catch (err) {
+    console.error(err);
+    res.status(503).json({ error: "Database unavailable" });
+  }
+});
+
+app.get("/api/reports/:id/image", async (req, res) => {
+  if (!UUID_RE.test(req.params.id)) {
+    res.status(404).send("Not found");
+    return;
+  }
+  try {
+    const image = await getReportImage(req.params.id);
+    if (!image) {
+      res.status(404).send("Not found");
+      return;
+    }
+    res.setHeader("Content-Type", "image/jpeg");
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.send(image);
+  } catch (err) {
+    console.error(err);
+    res.status(503).json({ error: "Database unavailable" });
+  }
+});
+
+app.get("/api/reports/:id/thumbnail", async (req, res) => {
+  if (!UUID_RE.test(req.params.id)) {
+    res.status(404).send("Not found");
+    return;
+  }
+  try {
+    const thumbnail = await getReportThumbnail(req.params.id);
+    if (!thumbnail) {
+      res.status(404).send("Not found");
+      return;
+    }
+    res.setHeader("Content-Type", "image/jpeg");
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.send(thumbnail);
   } catch (err) {
     console.error(err);
     res.status(503).json({ error: "Database unavailable" });

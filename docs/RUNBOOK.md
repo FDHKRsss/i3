@@ -1,12 +1,21 @@
 # Runbook — verify `docker compose up` end-to-end
 
 > Purpose: confirm on a plain Unix box that the whole stack (Vite/React frontend,
-> Express API, local PostgreSQL 16, and the two named volumes) builds, starts,
-> serves, persists a report, and survives a teardown/re-up cycle.
+> Express API, local PostgreSQL 16, and the single `pgdata` volume) builds,
+> starts, serves, persists a photo report, serves the stored image/thumbnail,
+> and survives a teardown/re-up cycle.
 
-All commands are run from the repository root, unless noted. No camera, mic or
-GPS permissions are ever requested: the frontend mocks capture and the backend
-mocks reverse-geocoding (see `docs/ARCHITECTURE.md`, "Mocking strategy").
+The frontend uses the **real camera** and **real GPS** on a phone (with a
+permission-denied/headless fallback so it still runs where capture is
+impossible). The backend stores the compressed photo **and** a small thumbnail
+as `BYTEA` in Postgres — there is no uploads volume and no files-on-disk image
+store.
+
+> **HTTPS required for real camera/GPS.** `getUserMedia` and
+> `navigator.geolocation` are only available in a secure context — over
+> **HTTPS**, or on **localhost**. To capture a real photo/GPS from a phone you
+> must put a TLS-terminating reverse proxy (e.g. Caddy/Traefik/nginx + Let's
+> Encrypt) in front of `APP_PORT`; the container itself serves plain HTTP.
 
 ---
 
@@ -15,6 +24,8 @@ mocks reverse-geocoding (see `docs/ARCHITECTURE.md`, "Mocking strategy").
 - Docker Engine (with the Compose v2 plugin: `docker compose version`).
 - A Unix shell (`bash`/`sh`).
 - Nothing listening on the host port you choose (default `8080`).
+- For real camera/GPS on a phone: an **HTTPS** reverse proxy in front of the
+  published port (or use `localhost` during local development).
 
 > Workspace note: if Docker is not available where you develop (e.g. this
 > agent workspace), validate the backend/API behavior with the Node test suite
@@ -29,14 +40,14 @@ cp .env.example .env
 
 The defaults work out of the box. The knobs you are most likely to touch:
 
-| Variable          | Default    | Meaning                                              |
-| ----------------- | ---------- | ---------------------------------------------------- |
-| `APP_PORT`        | `8080`     | Host port the app is published on (change it if `8080` is taken). |
-| `POSTGRES_USER`   | `civil42`  | Postgres user (also used by the app).                |
-| `POSTGRES_PASSWORD` | `civil42` | Postgres password.                                   |
-| `POSTGRES_DB`     | `civil42`  | Database name.                                       |
-| `GEO_PROVIDER`    | `mock`     | Reverse-geocode provider; only `mock` is implemented. |
-| `MAX_UPLOAD_BYTES`| `15728640` | Upload size cap (15 MB).                             |
+| Variable           | Default    | Meaning                                                   |
+| ------------------ | ---------- | --------------------------------------------------------- |
+| `APP_PORT`         | `8080`     | Host port the app is published on (change it if `8080` is taken). |
+| `POSTGRES_USER`    | `civil42`  | Postgres user (also used by the app).                     |
+| `POSTGRES_PASSWORD`| `civil42`  | Postgres password.                                        |
+| `POSTGRES_DB`      | `civil42`  | Database name.                                            |
+| `GEO_PROVIDER`     | `mock`     | Backend reverse-geocode provider; only `mock` is implemented. |
+| `MAX_UPLOAD_BYTES` | `15728640` | Multipart upload size cap (15 MB).                        |
 
 Postgres is **internal only** (no host port is published), so it never clashes
 with a local `5432`.
@@ -78,30 +89,34 @@ curl -s http://localhost:8080/health
 
 ```sh
 curl -s http://localhost:8080/ | grep -o '<title>[^<]*</title>'
+# <title>Civil42</title>
 ```
 
-Or open `http://localhost:8080/` in a browser. The single-page app loads from the
-built `dist/`, and all device capture is mocked (a canvas-drawn PNG, a synthetic
-WAV, and a fixed GPS default), so no permission prompts appear.
+Open the URL in a browser (via the HTTPS proxy, or `http://localhost:8080/`):
+**Home → "Report issue" → Camera → Location → Description → Review → submit →
+Reports**. On a phone over HTTPS this uses the real camera and real GPS; in a
+headless/denied context it falls back so the flow still completes.
 
-## 6. End-to-end: capture → submit → reverse-geocode → persist → list
+## 6. End-to-end: submit → reverse-geocode → persist → list
 
-Create two tiny stand-in files (the seed stores raw bytes; it does not decode
-audio/image content):
+The frontend uploads the canvas-compressed photo (`image`, required JPEG) and an
+optional `thumbnail`. To exercise the API without a phone, create two tiny
+stand-in JPEG files:
 
 ```sh
-printf 'dummy-wav-bytes' > /tmp/voice.wav
-printf 'dummy-png-bytes' > /tmp/photo.png
+printf '\xff\xd8\xff\xd9' > /tmp/photo.jpg
+printf '\xff\xd8\x01\x02' > /tmp/thumb.jpg
 ```
 
-Submit a report (multipart, `voice` required, `image` optional):
+Submit a report (multipart; `image` required, `thumbnail` optional):
 
 ```sh
 curl -s -X POST "http://localhost:8080/api/report" \
-  -F "voice=@/tmp/voice.wav;type=audio/wav" \
-  -F "image=@/tmp/photo.png;type=image/png" \
+  -F "image=@/tmp/photo.jpg;type=image/jpeg" \
+  -F "thumbnail=@/tmp/thumb.jpg;type=image/jpeg" \
   -F "lat=52.2297" \
-  -F "lon=21.0122"
+  -F "lon=21.0122" \
+  -F "description=Zepsuta latarnia"
 # Report received successfully
 ```
 
@@ -114,44 +129,53 @@ curl -s "http://localhost:8080/api/reports?limit=5"
 Expected: a JSON array whose newest entry contains
 
 - `id` — a UUID string,
+- `created_at` — an ISO timestamp,
 - `lat` / `lon` — `52.2297` / `21.0122`,
-- `audio_path` — `<uuid>.wav`,
-- `image_path` — `<uuid>.png`,
-- `geo_desc` — `mock location (52.22970, 21.01220)`.
+- `geo_desc` — `mock location (52.22970, 21.01220)`,
+- `description` — `Zepsuta latarnia`,
+- `thumbnailUrl` — `/api/reports/<id>/thumbnail`,
+- `imageUrl` — `/api/reports/<id>/image`.
 
-(`created_at` is kept only as an internal SQL ordering detail and is not exposed.)
+The `image`/`thumbnail` BYTEA bytes are **not** inlined into this payload — the
+client fetches them through the URLs above.
 
 ## 7. Verify persistence in Postgres
 
 ```sh
 docker compose exec db psql -U civil42 -d civil42 \
-  -c "SELECT id, lat, lon, audio_path, image_path, geo_desc FROM reports ORDER BY created_at DESC LIMIT 5;"
+  -c "SELECT id, lat, lon, geo_desc, description, octet_length(image) AS image_bytes, octet_length(thumbnail) AS thumb_bytes FROM reports ORDER BY created_at DESC LIMIT 5;"
 ```
 
-You should see the row you just submitted. The schema (`reports` table and the
-`reports_created_at_idx` index) is created by `db/init.sql` on the first boot.
+You should see the row you just submitted, with non-zero `image_bytes` (and
+`thumb_bytes` when a thumbnail was uploaded). The schema (`reports` table and
+the `reports_created_at_idx` index) is created by `db/init.sql` on first boot.
 
-## 8. Verify the uploads volume
+## 8. Verify the stored image and thumbnail are served
+
+Copy the newest `id` from step 6, then:
 
 ```sh
-docker compose exec app ls -l /app/uploads
+curl -s -o /dev/null -w "image:     %{http_code} %{content_type}\n" \
+  "http://localhost:8080/api/reports/<id>/image"
+curl -s -o /dev/null -w "thumbnail: %{http_code} %{content_type}\n" \
+  "http://localhost:8080/api/reports/<id>/thumbnail"
 ```
 
-Expected: one `<uuid>.wav` and one `<uuid>.png` file — the binaries written by
-`server/store.ts` to the `uploads` named volume.
+Expected: `200 image/jpeg` for both (and `404` if the id is unknown or the
+thumbnail was not uploaded).
 
 ## 9. Tear-down and restart (data survives)
 
 ```sh
-docker compose down      # stops containers; keeps pgdata + uploads volumes
-docker compose up -d     # starts again — report data is still there
+docker compose down      # stops containers; keeps the pgdata volume
+docker compose up -d     # starts again — the report is still there
 curl -s "http://localhost:8080/api/reports?limit=5"   # still lists the report
 ```
 
-For a **clean reset** (drop the database and uploaded files):
+For a **clean reset** (drop the database, including stored photos):
 
 ```sh
-docker compose down -v   # also deletes the named volumes (fresh start)
+docker compose down -v   # also deletes the pgdata volume (fresh start)
 docker compose up --build -d
 ```
 
@@ -170,3 +194,7 @@ docker compose up --build -d
 - **DB down at app start** — by design the app still boots and `/health` returns
   `{"ok":true,"db":"down"}` (HTTP `503`); report POST returns `500` rather than
   hanging until the DB comes back.
+- **Camera/GPS never prompt on a phone** — the page must be served over
+  **HTTPS** (a secure context). Put a TLS-terminating reverse proxy in front of
+  `APP_PORT`, or test on `localhost`. Insecure contexts fall back to the
+  permission-denied mock/manual paths.

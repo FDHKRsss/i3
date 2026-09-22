@@ -7,6 +7,8 @@ vi.mock("../server/db.js", () => ({
   ping: vi.fn(async () => true),
   listReports: vi.fn(async () => []),
   insertReport: vi.fn(async () => ({})),
+  getReportImage: vi.fn(async () => null),
+  getReportThumbnail: vi.fn(async () => null),
 }));
 
 vi.mock("../server/geo.js", () => ({
@@ -15,13 +17,16 @@ vi.mock("../server/geo.js", () => ({
   ),
 }));
 
-vi.mock("../server/store.js", () => ({
-  saveUpload: vi.fn(async () => "stored.bin"),
-  removeUpload: vi.fn(async () => {}),
-}));
-
 import { app } from "../server/index.js";
-import { insertReport, listReports, ping } from "../server/db.js";
+import {
+  getReportImage,
+  getReportThumbnail,
+  insertReport,
+  listReports,
+  ping,
+} from "../server/db.js";
+
+const REPORT_ID = "11111111-1111-4111-8111-111111111111";
 
 let server: Server;
 let baseUrl: string;
@@ -45,7 +50,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-/** Build a minimal, valid multipart/form-data report body (voice + coords). */
+/** Build a minimal, valid multipart/form-data report body (image + coords). */
 function buildReportBody(boundary: string): string {
   return [
     `--${boundary}\r\n`,
@@ -55,9 +60,9 @@ function buildReportBody(boundary: string): string {
     `Content-Disposition: form-data; name="lon"\r\n\r\n`,
     `21.0\r\n`,
     `--${boundary}\r\n`,
-    `Content-Disposition: form-data; name="voice"; filename="v.wav"\r\n`,
-    `Content-Type: audio/wav\r\n\r\n`,
-    `RIFF-fake-audio`,
+    `Content-Disposition: form-data; name="image"; filename="photo.jpg"\r\n`,
+    `Content-Type: image/jpeg\r\n\r\n`,
+    `fake-jpeg-bytes`,
     `\r\n--${boundary}--\r\n`,
   ].join("");
 }
@@ -94,43 +99,54 @@ describe("Express app (HTTP layer)", () => {
     expect(await spaRoute.text()).toContain('<div id="app"></div>');
   });
 
-  it("GET /api/reports returns rows and clamps an oversized limit to 100", async () => {
-    vi.mocked(listReports).mockResolvedValueOnce([
-      { id: "1", created_at: new Date() },
-    ] as never);
-    const res = await fetch(`${baseUrl}/api/reports?limit=9999`);
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual([{ id: "1" }]);
-    expect(listReports).toHaveBeenCalledWith(100);
-  });
-
-  it("strips the internal created_at while preserving every other report field", async () => {
+  it("GET /api/reports returns the public contract and clamps an oversized limit to 100", async () => {
     vi.mocked(listReports).mockResolvedValueOnce([
       {
-        id: "r-1",
+        id: REPORT_ID,
         created_at: new Date("2026-09-09T12:00:00Z"),
         lat: 52.2297,
         lon: 21.0122,
-        audio_path: "r-1.wav",
-        image_path: "r-1.png",
         geo_desc: "mock location (52.22970, 21.01220)",
+        description: "Zepsuta latarnia",
+      },
+    ] as never);
+    const res = await fetch(`${baseUrl}/api/reports?limit=9999`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([
+      {
+        id: REPORT_ID,
+        created_at: "2026-09-09T12:00:00.000Z",
+        lat: 52.2297,
+        lon: 21.0122,
+        geo_desc: "mock location (52.22970, 21.01220)",
+        description: "Zepsuta latarnia",
+        thumbnailUrl: `/api/reports/${REPORT_ID}/thumbnail`,
+        imageUrl: `/api/reports/${REPORT_ID}/image`,
+      },
+    ]);
+    expect(listReports).toHaveBeenCalledWith(100);
+  });
+
+  it("never inlines the image/thumbnail BYTEA columns into the list payload", async () => {
+    vi.mocked(listReports).mockResolvedValueOnce([
+      {
+        id: REPORT_ID,
+        created_at: new Date("2026-09-09T12:00:00Z"),
+        lat: null,
+        lon: null,
+        geo_desc: null,
+        description: "",
+        image: Buffer.from("secret-image-bytes"),
+        thumbnail: Buffer.from("secret-thumb-bytes"),
       },
     ] as never);
 
     const res = await fetch(`${baseUrl}/api/reports?limit=10`);
-    expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual([
-      {
-        id: "r-1",
-        lat: 52.2297,
-        lon: 21.0122,
-        audio_path: "r-1.wav",
-        image_path: "r-1.png",
-        geo_desc: "mock location (52.22970, 21.01220)",
-      },
-    ]);
-    expect("created_at" in body[0]).toBe(false);
+    expect(body[0].image).toBeUndefined();
+    expect(body[0].thumbnail).toBeUndefined();
+    expect(body[0].imageUrl).toBe(`/api/reports/${REPORT_ID}/image`);
+    expect(body[0].thumbnailUrl).toBe(`/api/reports/${REPORT_ID}/thumbnail`);
   });
 
   it("defaults the report limit to 50 and enforces a minimum of 1", async () => {
@@ -196,5 +212,82 @@ describe("Express app (HTTP layer)", () => {
     });
     expect(res.status).toBe(500);
     expect(await res.text()).toBe("Internal server error");
+  });
+
+  it("POST /api/report returns 400 when the image is missing", async () => {
+    const boundary = "----civil42testboundarynoimage";
+    const body = [
+      `--${boundary}\r\n`,
+      `Content-Disposition: form-data; name="lat"\r\n\r\n`,
+      `52.2\r\n`,
+      `--${boundary}--\r\n`,
+    ].join("");
+
+    const res = await fetch(`${baseUrl}/api/report`, {
+      method: "POST",
+      headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+      body,
+    });
+    expect(res.status).toBe(400);
+    expect(await res.text()).toBe("Missing image");
+  });
+
+  it("GET /api/reports/:id/image serves the stored JPEG bytes", async () => {
+    const bytes = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    vi.mocked(getReportImage).mockResolvedValueOnce(bytes);
+
+    const res = await fetch(`${baseUrl}/api/reports/${REPORT_ID}/image`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/jpeg");
+    expect(res.headers.get("cache-control")).toContain("max-age=31536000");
+    expect(Buffer.from(await res.arrayBuffer())).toEqual(bytes);
+    expect(getReportImage).toHaveBeenCalledWith(REPORT_ID);
+  });
+
+  it("GET /api/reports/:id/image returns 404 when the image is absent", async () => {
+    vi.mocked(getReportImage).mockResolvedValueOnce(null);
+    const res = await fetch(`${baseUrl}/api/reports/${REPORT_ID}/image`);
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe("Not found");
+  });
+
+  it("GET /api/reports/:id/image returns 404 for a malformed id", async () => {
+    const res = await fetch(`${baseUrl}/api/reports/not-a-uuid/image`);
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe("Not found");
+    expect(getReportImage).not.toHaveBeenCalled();
+  });
+
+  it("GET /api/reports/:id/image returns 503 when the database is unavailable", async () => {
+    vi.mocked(getReportImage).mockRejectedValueOnce(new Error("db down"));
+    const res = await fetch(`${baseUrl}/api/reports/${REPORT_ID}/image`);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "Database unavailable" });
+  });
+
+  it("GET /api/reports/:id/thumbnail serves the stored thumbnail bytes", async () => {
+    const bytes = Buffer.from([0xff, 0xd8, 0x01, 0x02]);
+    vi.mocked(getReportThumbnail).mockResolvedValueOnce(bytes);
+
+    const res = await fetch(`${baseUrl}/api/reports/${REPORT_ID}/thumbnail`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/jpeg");
+    expect(res.headers.get("cache-control")).toContain("max-age=31536000");
+    expect(Buffer.from(await res.arrayBuffer())).toEqual(bytes);
+    expect(getReportThumbnail).toHaveBeenCalledWith(REPORT_ID);
+  });
+
+  it("GET /api/reports/:id/thumbnail returns 404 when the thumbnail is absent", async () => {
+    vi.mocked(getReportThumbnail).mockResolvedValueOnce(null);
+    const res = await fetch(`${baseUrl}/api/reports/${REPORT_ID}/thumbnail`);
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe("Not found");
+  });
+
+  it("GET /api/reports/:id/thumbnail returns 404 for a malformed id", async () => {
+    const res = await fetch(`${baseUrl}/api/reports/not-a-uuid/thumbnail`);
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe("Not found");
+    expect(getReportThumbnail).not.toHaveBeenCalled();
   });
 });

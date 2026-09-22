@@ -1,10 +1,8 @@
 import busboy from "busboy";
-import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import { whatIsAtLocation } from "./geo.js";
 import { insertReport } from "./db.js";
-import { removeUpload, saveUpload } from "./store.js";
 
 export class HttpError extends Error {
   constructor(
@@ -23,10 +21,11 @@ interface ParsedFile {
 }
 
 interface ParsedReport {
-  voice?: ParsedFile;
   image?: ParsedFile;
+  thumbnail?: ParsedFile;
   lat?: string;
   lon?: string;
+  description?: string;
 }
 
 function maxUploadBytes(): number {
@@ -52,17 +51,6 @@ function parseCoord(
   return n;
 }
 
-function extFor(mimetype: string, fallback: string): string {
-  const byMime: Record<string, string> = {
-    "audio/webm": "webm",
-    "audio/wav": "wav",
-    "audio/x-wav": "wav",
-    "image/png": "png",
-    "image/jpeg": "jpg",
-  };
-  return byMime[mimetype] ?? fallback;
-}
-
 function parseMultipart(
   req: IncomingMessage,
   maxBytes: number
@@ -79,7 +67,7 @@ function parseMultipart(
         files: 2,
         fileSize: maxBytes,
         fields: 20,
-        fieldSize: 64 * 1024,
+        fieldSize: 1024 * 1024,
         parts: 30,
       },
     });
@@ -96,7 +84,8 @@ function parseMultipart(
         info: { mimetype?: string; mimeType?: string }
       ) => {
         const chunks: Buffer[] = [];
-        const mimetype = info.mimeType ?? info.mimetype ?? "application/octet-stream";
+        const mimetype =
+          info.mimeType ?? info.mimetype ?? "application/octet-stream";
 
         const p = new Promise<void>((res, rej) => {
           file.on("limit", () => {
@@ -148,6 +137,13 @@ function parseMultipart(
   });
 }
 
+/**
+ * Handle `POST /api/report` (multipart/form-data).
+ *
+ * M14 -- real contract: `image` (required, JPEG), `thumbnail` (optional),
+ * `lat` / `lon` (optional, validated), `description` (optional). The photo and
+ * thumbnail are stored as `BYTEA` in Postgres — no uploads volume, no `voice`.
+ */
 export async function handleReport(
   req: IncomingMessage,
   res: ServerResponse
@@ -162,39 +158,29 @@ export async function handleReport(
 
   const lat = parseCoord(parsed.lat, "lat");
   const lon = parseCoord(parsed.lon, "lon");
-  const voice = parsed.voice;
+  const image = parsed.image;
 
-  if (!voice || voice.buffer.length === 0) {
-    throw new HttpError(400, "Missing voice recording");
+  if (!image || image.buffer.length === 0) {
+    throw new HttpError(400, "Missing image");
   }
 
+  const description = parsed.description ?? "";
   const geoDesc =
     lat !== null && lon !== null ? await whatIsAtLocation({ lat, lon }) : "";
 
-  const id = randomUUID();
-  const audioPath = await saveUpload(
-    id,
-    extFor(voice.mimetype, "webm"),
-    voice.buffer
-  );
+  const thumbnail =
+    parsed.thumbnail && parsed.thumbnail.buffer.length > 0
+      ? parsed.thumbnail.buffer
+      : null;
 
-  let imagePath: string | null = null;
-  try {
-    if (parsed.image && parsed.image.buffer.length > 0) {
-      imagePath = await saveUpload(
-        id,
-        extFor(parsed.image.mimetype, "png"),
-        parsed.image.buffer
-      );
-    }
-    await insertReport({ lat, lon, audioPath, imagePath, geoDesc });
-  } catch (err) {
-    await removeUpload(audioPath);
-    if (imagePath) {
-      await removeUpload(imagePath);
-    }
-    throw err;
-  }
+  await insertReport({
+    lat,
+    lon,
+    geoDesc,
+    description,
+    image: image.buffer,
+    thumbnail,
+  });
 
   res.statusCode = 200;
   res.setHeader("Content-Type", "text/plain; charset=utf-8");

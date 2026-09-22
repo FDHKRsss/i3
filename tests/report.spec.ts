@@ -10,19 +10,11 @@ vi.mock("../server/geo.js", () => ({
 
 vi.mock("../server/db.js", () => ({
   insertReport: vi.fn(async () => ({})),
-  listReports: vi.fn(),
-  ping: vi.fn(),
-}));
-
-vi.mock("../server/store.js", () => ({
-  saveUpload: vi.fn(async () => "stored.bin"),
-  removeUpload: vi.fn(async () => {}),
 }));
 
 import { handleReport, HttpError } from "../server/report.js";
 import { whatIsAtLocation } from "../server/geo.js";
 import { insertReport } from "../server/db.js";
-import { removeUpload, saveUpload } from "../server/store.js";
 
 interface MultipartFile {
   name: string;
@@ -105,18 +97,18 @@ async function dispatch(
   }
 }
 
-const voice: MultipartFile = {
-  name: "voice",
-  filename: "voice.wav",
-  contentType: "audio/wav",
-  data: Buffer.from("RIFF-fake-audio"),
-};
-
 const image: MultipartFile = {
   name: "image",
-  filename: "image.png",
-  contentType: "image/png",
-  data: Buffer.from("fake-png-bytes"),
+  filename: "image.jpg",
+  contentType: "image/jpeg",
+  data: Buffer.from("fake-jpeg-bytes"),
+};
+
+const thumbnail: MultipartFile = {
+  name: "thumbnail",
+  filename: "thumbnail.jpg",
+  contentType: "image/jpeg",
+  data: Buffer.from("fake-thumb-bytes"),
 };
 
 describe("handleReport", () => {
@@ -137,20 +129,33 @@ describe("handleReport", () => {
     expect(res.body).toBe("Expected multipart/form-data");
   });
 
-  it("rejects a report without a voice file", async () => {
+  it("rejects a report without an image with 400", async () => {
     const { body, boundary } = buildMultipart({ lat: "52.2", lon: "21.0" });
     const res = makeResponse();
 
     await dispatch(makeRequest(body, boundary), res);
 
     expect(res.statusCode).toBe(400);
-    expect(res.body).toBe("Missing voice recording");
+    expect(res.body).toBe("Missing image");
+    expect(vi.mocked(insertReport)).not.toHaveBeenCalled();
+  });
+
+  it("rejects an empty image file with 400", async () => {
+    const emptyImage = { ...image, data: Buffer.alloc(0) };
+    const { body, boundary } = buildMultipart({}, [emptyImage]);
+    const res = makeResponse();
+
+    await dispatch(makeRequest(body, boundary), res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toBe("Missing image");
+    expect(vi.mocked(insertReport)).not.toHaveBeenCalled();
   });
 
   it("rejects a non-numeric latitude", async () => {
     const { body, boundary } = buildMultipart(
       { lat: "not-a-number", lon: "21.0" },
-      [voice]
+      [image]
     );
     const res = makeResponse();
 
@@ -160,8 +165,31 @@ describe("handleReport", () => {
     expect(res.body).toBe("Invalid lat");
   });
 
+  it("rejects a non-finite latitude (Infinity)", async () => {
+    const { body, boundary } = buildMultipart(
+      { lat: "Infinity", lon: "21.0" },
+      [image]
+    );
+    const res = makeResponse();
+
+    await dispatch(makeRequest(body, boundary), res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toBe("Invalid lat");
+  });
+
+  it("rejects an out-of-range latitude", async () => {
+    const { body, boundary } = buildMultipart({ lat: "91", lon: "21.0" }, [image]);
+    const res = makeResponse();
+
+    await dispatch(makeRequest(body, boundary), res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toBe("Invalid lat");
+  });
+
   it("rejects an out-of-range longitude", async () => {
-    const { body, boundary } = buildMultipart({ lat: "52.2", lon: "200" }, [voice]);
+    const { body, boundary } = buildMultipart({ lat: "52.2", lon: "200" }, [image]);
     const res = makeResponse();
 
     await dispatch(makeRequest(body, boundary), res);
@@ -170,8 +198,8 @@ describe("handleReport", () => {
     expect(res.body).toBe("Invalid lon");
   });
 
-  it("accepts a voice-only report without coordinates", async () => {
-    const { body, boundary } = buildMultipart({}, [voice]);
+  it("accepts an image-only report without coordinates", async () => {
+    const { body, boundary } = buildMultipart({}, [image]);
     const res = makeResponse();
 
     await dispatch(makeRequest(body, boundary), res);
@@ -179,13 +207,31 @@ describe("handleReport", () => {
     expect(res.statusCode).toBe(200);
     expect(res.body).toBe("Report received successfully");
     expect(whatIsAtLocation).not.toHaveBeenCalled();
+    expect(vi.mocked(insertReport)).toHaveBeenCalledWith({
+      lat: null,
+      lon: null,
+      geoDesc: "",
+      description: "",
+      image: Buffer.from("fake-jpeg-bytes"),
+      thumbnail: null,
+    });
+  });
+
+  it("treats whitespace-only coordinates as absent", async () => {
+    const { body, boundary } = buildMultipart({ lat: "   ", lon: "   " }, [image]);
+    const res = makeResponse();
+
+    await dispatch(makeRequest(body, boundary), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(whatIsAtLocation).not.toHaveBeenCalled();
     expect(vi.mocked(insertReport)).toHaveBeenCalledWith(
       expect.objectContaining({ lat: null, lon: null, geoDesc: "" })
     );
   });
 
   it("skips reverse-geocoding when only latitude is provided", async () => {
-    const { body, boundary } = buildMultipart({ lat: "52.2297" }, [voice]);
+    const { body, boundary } = buildMultipart({ lat: "52.2297" }, [image]);
     const res = makeResponse();
 
     await dispatch(makeRequest(body, boundary), res);
@@ -198,10 +244,10 @@ describe("handleReport", () => {
     );
   });
 
-  it("persists a valid report with voice + image + coordinates", async () => {
+  it("persists a valid report with image + thumbnail + coordinates + description", async () => {
     const { body, boundary } = buildMultipart(
-      { lat: "52.2297", lon: "21.0122" },
-      [voice, image]
+      { lat: "52.2297", lon: "21.0122", description: "Zepsuta latarnia" },
+      [image, thumbnail]
     );
     const res = makeResponse();
 
@@ -210,26 +256,24 @@ describe("handleReport", () => {
     expect(res.statusCode).toBe(200);
     expect(res.body).toBe("Report received successfully");
     expect(whatIsAtLocation).toHaveBeenCalledWith({ lat: 52.2297, lon: 21.0122 });
-    expect(vi.mocked(saveUpload)).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(insertReport)).toHaveBeenCalledWith(
-      expect.objectContaining({
-        lat: 52.2297,
-        lon: 21.0122,
-        geoDesc: "geocoded 52.2297,21.0122",
-      })
-    );
+    expect(vi.mocked(insertReport)).toHaveBeenCalledWith({
+      lat: 52.2297,
+      lon: 21.0122,
+      geoDesc: "geocoded 52.2297,21.0122",
+      description: "Zepsuta latarnia",
+      image: Buffer.from("fake-jpeg-bytes"),
+      thumbnail: Buffer.from("fake-thumb-bytes"),
+    });
   });
 
-  it("cleans up the uploaded file when the database insert fails", async () => {
+  it("returns 500 when the database insert fails", async () => {
     vi.mocked(insertReport).mockRejectedValueOnce(new Error("db down"));
-    const { body, boundary } = buildMultipart({ lat: "1", lon: "2" }, [voice]);
+    const { body, boundary } = buildMultipart({ lat: "1", lon: "2" }, [image]);
     const res = makeResponse();
 
     await dispatch(makeRequest(body, boundary), res);
 
     expect(res.statusCode).toBe(500);
-    expect(vi.mocked(saveUpload)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(removeUpload)).toHaveBeenCalledWith("stored.bin");
     expect(vi.mocked(insertReport)).toHaveBeenCalledTimes(1);
   });
 });
@@ -239,23 +283,24 @@ describe("handleReport edge cases", () => {
     vi.clearAllMocks();
   });
 
-  it("rejects an empty voice file", async () => {
-    const emptyVoice = { ...voice, data: Buffer.alloc(0) };
-    const { body, boundary } = buildMultipart({}, [emptyVoice]);
+  it("stores no thumbnail when one is not uploaded", async () => {
+    const { body, boundary } = buildMultipart({ lat: "1", lon: "2" }, [image]);
     const res = makeResponse();
 
     await dispatch(makeRequest(body, boundary), res);
 
-    expect(res.statusCode).toBe(400);
-    expect(res.body).toBe("Missing voice recording");
+    expect(res.statusCode).toBe(200);
+    expect(vi.mocked(insertReport)).toHaveBeenCalledWith(
+      expect.objectContaining({ thumbnail: null })
+    );
   });
 
   it("rejects an oversized upload with 400", async () => {
     const prev = process.env.MAX_UPLOAD_BYTES;
     process.env.MAX_UPLOAD_BYTES = "16";
     try {
-      const bigVoice = { ...voice, data: Buffer.alloc(64, 0x61) };
-      const { body, boundary } = buildMultipart({}, [bigVoice]);
+      const bigImage = { ...image, data: Buffer.alloc(64, 0x61) };
+      const { body, boundary } = buildMultipart({}, [bigImage]);
       const res = makeResponse();
 
       await dispatch(makeRequest(body, boundary), res);
@@ -271,11 +316,11 @@ describe("handleReport edge cases", () => {
   it("rejects more than two files with 400", async () => {
     const extra = {
       name: "extra",
-      filename: "extra.wav",
-      contentType: "audio/wav",
+      filename: "extra.jpg",
+      contentType: "image/jpeg",
       data: Buffer.from("extra"),
     };
-    const { body, boundary } = buildMultipart({}, [voice, image, extra]);
+    const { body, boundary } = buildMultipart({}, [image, thumbnail, extra]);
     const res = makeResponse();
 
     await dispatch(makeRequest(body, boundary), res);

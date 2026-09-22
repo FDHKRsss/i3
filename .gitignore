@@ -9,9 +9,6 @@ server-dist
 # Build/version artifacts
 src/version.txt
 
-# Runtime data (kept in docker volumes, not in git)
-uploads/
-
 # Env files
 .env
 .env.*

@@ -80,11 +80,18 @@ Key decisions vs. the previous seed:
   `#/reports`; a network failure / 4xx / 5xx shows a short, non-leaky error
   with a retry. Covered by `src/pages/NewReport.review.spec.tsx` and
   `tests/send.spec.ts`.
-- **M13–M15 — not implemented yet.** Full reports-list rows (M13), the
-  `BYTEA`-backed DB/API (M14), and the final compose/tests/docs pass (M15)
-  remain open. (M12/M13 are frontend-first and target the M14 backend contract;
-  the seed backend still expects the old `voice`/`audio_path` shape until M14
-  lands.)
+- **M13 (Reports list) — real done.** The reports page now renders the full
+  list: every report with a photo thumbnail (`thumbnailUrl`, falling back to
+  `imageUrl`), a map + pin tile (`MapPin` from lat/lon), and a summary
+  (description + coordinates + address + timestamp), newest-first by
+  `created_at`, plus loading / error / empty states — and it degrades
+  gracefully against the older seed backend rows (no `description` /
+  `thumbnailUrl` / `imageUrl` / `created_at`). Covered by
+  `src/pages/Reports.spec.tsx`.
+- **M14–M15 — not implemented yet.** The `BYTEA`-backed DB/API (M14) and the
+  final compose/tests/docs pass (M15) remain open. (M12/M13 are delivered
+  frontend-first and target the M14 backend contract; the seed backend still
+  expects the old `voice`/`audio_path` shape until M14 lands.)
 
 
 ## Source & git

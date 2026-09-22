@@ -114,8 +114,8 @@ Pass 2 = replace each stub with the real implementation.
 - [x] M12 -- stub  **Review & submit.** Three placeholder tiles (photo, map, summary) from wizard state; "Submit" posts to `/api/report` and shows a canned success. *(Subsumed by M12 -- real, delivered directly this turn: the real review step already renders the three tiles and is headless-safe, so no separate stub pass was needed.)*
 - [x] M12 -- real  **Review & submit.** Real photo thumbnail, real map thumbnail, summary tile (description + coordinates); multipart POST (`image`, `thumbnail`, `lat`, `lon`, `description`); 4xx/5xx handling; success → `#/reports`. *(Done this turn — `npm test` 152 passed + `npm run typecheck` green.)*
 
-- [ ] M13 -- stub  **Reports list.** `/api/reports` returns canned rows; list renders placeholders.
-- [ ] M13 -- real  **Reports list.** Fetch `/api/reports`; render each report with photo thumbnail, map thumbnail, description, coordinates, timestamp; newest first; empty/error states.
+- [x] M13 -- stub  **Reports list.** `/api/reports` returns canned rows; list renders placeholders. *(Subsumed by M8 -- real's shell + M13 -- real, delivered together this turn: the shell already fetched `/api/reports` and rendered loading/error/empty/ready states, so no separate stub pass was needed.)*
+- [x] M13 -- real  **Reports list.** Fetch `/api/reports`; render each report with photo thumbnail, map thumbnail, description, coordinates, timestamp; newest first; empty/error states. *(Done this turn — `npm test` 160 passed + `npm run typecheck` green.)*
 
 - [ ] M14 -- stub  **Backend & DB.** Endpoints `/api/reports`, `/api/reports/:id/image`, `/api/reports/:id/thumbnail` with canned data; in-memory store with the new shape.
 - [ ] M14 -- real  **Backend & DB.** `db/init.sql` new `reports` table (drop audio, add `description`, `image BYTEA`, `thumbnail BYTEA`); `db.ts` insert/list/get image/get thumbnail; `report.ts` multipart parse (`image` required, `thumbnail` optional, `lat`, `lon`, `description`) + validation; image-serving routes; health.
@@ -164,19 +164,27 @@ Pass 2 = replace each stub with the real implementation.
   / 4xx / 5xx it shows a short, non-leaky error with a retry. The stub line is
   subsumed by this real implementation (see milestone list). `npm test`
   (152 passed) + `npm run typecheck` are green.
-- Next: **M13** — reports list, then M14 (BYTEA-backed DB/API), M15
-  (compose/tests/docs). Where the real module already runs headless-safe, it
-  is delivered directly (no separate stub pass is needed), as with M10, M11
-  and M12.
+- **M13 (stub + real) — done (this turn).** The reports page now renders the
+  full list — every report with its photo thumbnail (`thumbnailUrl`, falling
+  back to `imageUrl`), map + pin (`MapPin` from lat/lon), summary (description
+  + coordinates + address + timestamp), newest-first by `created_at`, plus
+  loading / error / empty states — while degrading gracefully against the
+  older seed backend rows (no `description` / `thumbnailUrl` / `imageUrl` /
+  `created_at`). `npm test` (160 passed) + `npm run typecheck` are green. The
+  stub line is subsumed by M8 -- real's shell + this real list (see milestone
+  list).
+- Next: **M14** (BYTEA-backed DB/API) then M15 (compose/tests/docs). M12 and
+  M13 are delivered frontend-first against the M14 contract, so the backend is
+  the critical remaining piece — a real `POST /api/report` / `GET /api/reports`
+  against the seed backend still fails until M14 lands.
 - **M12/M13 → M14 contract dependency.** M12 (submit) and M13 (reports list)
-  are frontend-first and target the **M14** backend contract:
+  are delivered frontend-first against the **M14** backend contract:
   `POST /api/report` accepts `image`/`thumbnail`/`lat`/`lon`/`description`,
   and `GET /api/reports` returns `description`, `created_at` and
-  `thumbnailUrl`. M12 is delivered with mocked-`fetch` tests; M13 will be
-  delivered the same way. Do **not** rewrite the backend as part of them — the
-  seed backend still expects `voice` and returns the old
-  `audio_path`/`image_path` row shape until M14 lands, so a real submit/list
-  against it will fail until then.
+  `thumbnailUrl`. Both keep mocked-`fetch` tests. Do **not** rewrite the
+  backend as part of them — the seed backend still expects `voice` and returns
+  the old `audio_path`/`image_path` row shape until M14 lands, so a real
+  submit/list against it still fails until then.
 - Review signal: when M15 -- real is green the signal is `ALL_MILESTONES_DONE`.
 
 ## Post-approval polish (minor — recorded, no scope change)

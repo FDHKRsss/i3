@@ -159,6 +159,14 @@ Pass 2 = replace each stub with the real implementation.
   DB/API), M15 (compose/tests/docs). Where the real module already runs
   headless-safe, it is delivered directly (no separate stub pass is needed),
   as with M10 and M11.
+- **M12/M13 → M14 contract dependency.** M12 (submit) and M13 (reports list)
+  are frontend-first and target the **M14** backend contract:
+  `POST /api/report` accepts `image`/`thumbnail`/`lat`/`lon`/`description`,
+  and `GET /api/reports` returns `description`, `created_at` and
+  `thumbnailUrl`. Deliver M12/M13 with mocked-`fetch` tests and do **not**
+  rewrite the backend as part of them — the seed backend still expects
+  `voice` and returns the old `audio_path`/`image_path` row shape until M14
+  lands, so a real submit/list against it will fail until then.
 - Review signal: when M15 -- real is green the signal is `ALL_MILESTONES_DONE`.
 
 ## Post-approval polish (minor — recorded, no scope change)

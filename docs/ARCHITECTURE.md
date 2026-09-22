@@ -74,6 +74,8 @@ Key decisions vs. the previous seed:
   `src/description.spec.ts` and `src/pages/NewReport.spec.tsx`.
 - **M12–M15 — not implemented yet.** Review/submit, full reports-list rows,
   the `BYTEA`-backed DB/API, and the final compose/tests/docs pass remain open.
+  (M12/M13 are frontend-first and target the M14 backend contract; the seed
+  backend still expects the old `voice`/`audio_path` shape until M14 lands.)
 
 
 ## Source & git
